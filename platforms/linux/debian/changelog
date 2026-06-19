@@ -1,8 +1,8 @@
-gearlynx (1.2.2-1~ppa1~noble1) noble; urgency=medium
+gearlynx (1.2.13-1~ppa1) UNRELEASED; urgency=medium
 
-  * Initial PPA build for Noble.
-  * Add Debian packaging for Gearlynx 1.2.2.
-  * Build against libsdl3-dev from the ubuntu-goodies PPA.
+  * Initial PPA build.
+  * Add Debian packaging for Gearlynx 1.2.13.
+  * Built against libsdl3-dev from the johngrimmreaper Ubuntu PPA https://launchpad.net/~johngrimmreaper
   * Install the binary under /usr/games.
   * Add a desktop entry and application icon.
   * Add a minimal manual page.

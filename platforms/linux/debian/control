@@ -14,7 +14,7 @@ Vcs-Browser: https://github.com/drhelius/Gearlynx
 Vcs-Git: https://github.com/drhelius/Gearlynx.git
 
 Package: gearlynx
-Architecture: any
+Architecture: amd64 i386 arm64 armhf
 Depends:
  ${misc:Depends},
  ${shlibs:Depends}

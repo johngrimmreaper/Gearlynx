@@ -16,6 +16,7 @@ Vcs-Git: https://github.com/drhelius/Gearlynx.git
 Package: gearlynx
 Architecture: amd64 amd64v3 i386 arm64 armhf
 Depends:
+ sdl-gamecontrollerdb,
  ${misc:Depends},
  ${shlibs:Depends}
 Description: Atari Lynx emulator

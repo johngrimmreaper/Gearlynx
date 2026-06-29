@@ -1,3 +1,2 @@
 platforms/linux/gearlynx usr/lib/gearlynx/
-platforms/shared/gamecontrollerdb.txt usr/lib/gearlynx/
 debian/gearlynx.desktop usr/share/applications/

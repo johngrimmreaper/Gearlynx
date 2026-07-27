@@ -28,8 +28,11 @@
 #include "sound_queue.h"
 #include "config.h"
 #include "rewind.h"
+#include "runahead.h"
 #include "events.h"
 #include "mcp/mcp_manager.h"
+#include "vscode/debug_monitor_server.h"
+#include "vscode/framebuffer_server.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #if defined(_WIN32)
@@ -46,6 +49,8 @@ static u16 input_active_directions = 0;
 static const int k_frame_buffer_size = 256 * 256 * 4;
 static Uint64 rewind_last_counter = 0;
 static double rewind_pop_accumulator = 0.0;
+static DebugMonitorServer* debug_monitor;
+static FramebufferServer* fb_server;
 
 enum Loading_State
 {
@@ -117,13 +122,18 @@ bool emu_init(void)
     emu_debug_command = Debug_Command_None;
     emu_debug_pc_changed = false;
     emu_debug_step_frames_pending = 0;
+    emu_frame_counter = 0;
     for (int i = 0; i < 8; i++)
         emu_debug_irq_breakpoints[i] = false;
+
+    rewind_init();
+    runahead_init();
 
     mcp_manager = new McpManager();
     mcp_manager->Init(core);
 
-    rewind_init();
+    debug_monitor = new DebugMonitorServer();
+    debug_monitor->Init(core);
 
     return true;
 }
@@ -139,6 +149,9 @@ void emu_destroy(void)
 
     save_ram();
     rewind_destroy();
+    runahead_destroy();
+    SafeDelete(fb_server);
+    SafeDelete(debug_monitor);
     SafeDelete(mcp_manager);
     SafeDeleteArray(audio_buffer);
     sound_queue_destroy();
@@ -235,31 +248,10 @@ bool emu_finish_rom_loading(void)
     return true;
 }
 
-void emu_render_current_frame(void)
-{
-    LcdScreen* lcd_screen = core->GetMikey()->GetLcdScreen();
-
-    if (!core->GetMedia()->IsBiosLoaded())
-    {
-        lcd_screen->RenderNoBiosScreen(emu_frame_buffer);
-        return;
-    }
-
-    lcd_screen->SetBuffer(emu_frame_buffer);
-    lcd_screen->EndFrame(core->GetMedia()->GetRotation());
-
-    if (config_debug.debug)
-        update_debug();
-}
-
-void emu_reset_rewind_timing(void)
-{
-    reset_rewind_timing();
-}
-
 void emu_update(void)
 {
     emu_mcp_pump_commands();
+    emu_debug_monitor_pump_commands();
 
     if (loading_state.load() != Loading_State_None)
         return;
@@ -269,6 +261,7 @@ void emu_update(void)
 
     int sampleCount = 0;
     bool frame_executed = false;
+    bool frame_completed = false;
 
     if (rewind_is_active())
     {
@@ -303,6 +296,9 @@ void emu_update(void)
         debug_run.stop_on_run_to_breakpoint = true;
 
         debug_run.skip_interrupts_on_step = config_debug.step_skip_interrupts && (emu_debug_command == Debug_Command_Step);
+        debug_run.stop_on_brk = config_debug.pause_on_brk && !emu_debug_disable_breakpoints;
+        debug_run.brk_value = (u8)(config_debug.pause_on_brk_value & 0xFF);
+        debug_run.brk_trigger_irq = config_debug.pause_on_brk_trigger_irq;
 
         debug_run.stop_on_irq = 0;
         for (int i = 0; i < 8; i++)
@@ -315,9 +311,14 @@ void emu_update(void)
 
         if (executed)
         {
+            Debug_Command debug_command = emu_debug_command;
             rewind_commit_seek();
+            emu_debug_monitor_notify_resumed();
             breakpoint_hit = core->RunToVBlank(emu_frame_buffer, audio_buffer, &sampleCount, &debug_run);
             frame_executed = true;
+
+            if (!breakpoint_hit && (debug_command == Debug_Command_StepFrame || debug_command == Debug_Command_Continue))
+                frame_completed = true;
         }
 
         if (breakpoint_hit || emu_debug_command == Debug_Command_StepFrame || emu_debug_command == Debug_Command_Step)
@@ -343,6 +344,12 @@ void emu_update(void)
         else if (emu_debug_command != Debug_Command_Continue)
             emu_debug_command = Debug_Command_None;
 
+        if (emu_debug_command == Debug_Command_None && executed)
+        {
+            u16 pc = core->GetM6502()->GetState()->PC.GetValue();
+            emu_debug_monitor_notify_stopped(breakpoint_hit, pc);
+        }
+
         if (executed)
             update_debug();
     }
@@ -351,13 +358,24 @@ void emu_update(void)
         if (!core->IsPaused())
         {
             rewind_commit_seek();
-            core->RunToVBlank(emu_frame_buffer, audio_buffer, &sampleCount);
+
+            int runahead = runahead_get_frames();
+            if (runahead > 0)
+                runahead_run(runahead, emu_frame_buffer, audio_buffer, &sampleCount);
+            else
+                core->RunToVBlank(emu_frame_buffer, audio_buffer, &sampleCount);
+
             frame_executed = true;
+            frame_completed = true;
         }
     }
 
     if (frame_executed)
+    {
+        if (frame_completed)
+            emu_frame_counter++;
         rewind_push();
+    }
 
     if ((sampleCount > 0) && !core->IsPaused())
     {
@@ -369,6 +387,8 @@ void emu_update(void)
         memset(audio_buffer, 0, silence_count * sizeof(s16));
         sound_queue_write(audio_buffer, silence_count, false);
     }
+
+    emu_debug_monitor_push_frame();
 }
 
 static void reset_rewind_timing(void)
@@ -546,6 +566,77 @@ void emu_force_console_type(int console_type)
     core->GetMedia()->ForceConsoleType((GLYNX_Console_Type)console_type);
 }
 
+void emu_force_eeprom(int eeprom)
+{
+    GLYNX_EEPROM type = GLYNX_EEPROM_NONE;
+
+    switch (eeprom)
+    {
+        case config_EEPROM_Auto:
+            core->GetMedia()->AutoDetectEEPROM();
+            return;
+        case config_EEPROM_None:
+            break;
+        case config_EEPROM_93C46_16Bit:
+            type = GLYNX_EEPROM_93C46;
+            break;
+        case config_EEPROM_93C46_8Bit:
+            type = (GLYNX_EEPROM)(GLYNX_EEPROM_93C46 | GLYNX_EEPROM_8BIT);
+            break;
+        case config_EEPROM_93C56_16Bit:
+            type = GLYNX_EEPROM_93C56;
+            break;
+        case config_EEPROM_93C56_8Bit:
+            type = (GLYNX_EEPROM)(GLYNX_EEPROM_93C56 | GLYNX_EEPROM_8BIT);
+            break;
+        case config_EEPROM_93C66_16Bit:
+            type = GLYNX_EEPROM_93C66;
+            break;
+        case config_EEPROM_93C66_8Bit:
+            type = (GLYNX_EEPROM)(GLYNX_EEPROM_93C66 | GLYNX_EEPROM_8BIT);
+            break;
+        case config_EEPROM_93C76_16Bit:
+            type = GLYNX_EEPROM_93C76;
+            break;
+        case config_EEPROM_93C76_8Bit:
+            type = (GLYNX_EEPROM)(GLYNX_EEPROM_93C76 | GLYNX_EEPROM_8BIT);
+            break;
+        case config_EEPROM_93C86_16Bit:
+            type = GLYNX_EEPROM_93C86;
+            break;
+        case config_EEPROM_93C86_8Bit:
+            type = (GLYNX_EEPROM)(GLYNX_EEPROM_93C86 | GLYNX_EEPROM_8BIT);
+            break;
+        default:
+            core->GetMedia()->AutoDetectEEPROM();
+            return;
+    }
+
+    core->GetMedia()->ForceEEPROM(type);
+}
+
+void emu_set_fast_sprite_rendering(bool enabled)
+{
+    core->GetSuzy()->SetFastSpriteRendering(enabled);
+}
+
+void emu_set_sprite_bounding_box(int mode, int decay)
+{
+#if !defined(GLYNX_DISABLE_DISASSEMBLER)
+    int mode_index = CLAMP(mode, GLYNX_SPRITE_BOUNDING_BOX_DISABLED, GLYNX_SPRITE_BOUNDING_BOX_SPRCOLL_BIT_7);
+    int decay_frames = CLAMP(decay, 0, 10);
+    core->GetSuzy()->SetSpriteBoundingBox((GLYNX_Sprite_Bounding_Box_Mode)mode_index, decay_frames);
+#else
+    UNUSED(mode);
+    UNUSED(decay);
+#endif
+}
+
+void emu_set_debug_output(bool enabled)
+{
+    core->GetMikey()->SetDebugOutputEnabled(enabled);
+}
+
 void emu_audio_mute(bool mute)
 {
     audio_enabled = !mute;
@@ -685,6 +776,7 @@ void emu_get_info(char* info, int buffer_size)
         u32 crc = media->GetCRC();
         int rom_size = media->GetROMSize();
         const char* is_in_database = media->IsInGameDatabase() ? "YES" : "NO";
+        const char* format = media->GetFormatName();
         const char* header_name = media->GetHeaderName();
         const char* header_manufacturer = media->GetHeaderManufacturer();
         u16 bank0_page_size = media->GetHeaderBank0PageSize();
@@ -735,6 +827,7 @@ void emu_get_info(char* info, int buffer_size)
             "File Name: %s\n"
             "CRC: %08X\n"
             "Internal DB: %s\n"
+            "Format: %s\n"
             "ROM Size: %d bytes (%d KB)\n"
             "Screen: %dx%d\n"
             "Header Name: %s\n"
@@ -744,7 +837,7 @@ void emu_get_info(char* info, int buffer_size)
             "Rotation: %s\n"
             "AUDIN: %s\n"
             "EEPROM: %s%s",
-            filename, crc, is_in_database, rom_size, rom_size / 1024,
+            filename, crc, is_in_database, format, rom_size, rom_size / 1024,
             runtime.screen_width, runtime.screen_height,
             header_name[0] ? header_name : "(none)",
             header_manufacturer[0] ? header_manufacturer : "(none)",
@@ -811,8 +904,16 @@ void emu_debug_step_out(void)
 
 void emu_debug_step_frame(void)
 {
+    emu_debug_step_frames(1);
+}
+
+void emu_debug_step_frames(int frames)
+{
+    if (frames < 1)
+        frames = 1;
+
     core->Pause(false);
-    emu_debug_step_frames_pending++;
+    emu_debug_step_frames_pending += frames;
     emu_debug_command = Debug_Command_StepFrame;
 }
 
@@ -827,6 +928,16 @@ void emu_debug_continue(void)
 {
     core->Pause(false);
     emu_debug_command = Debug_Command_Continue;
+}
+
+void emu_set_disassembler_syntax(int syntax)
+{
+#if !defined(GLYNX_DISABLE_DISASSEMBLER)
+    if (IsValidPointer(core))
+        core->GetM6502()->SetDisassemblerSyntax((GLYNX_Disassembler_Syntax)syntax);
+#else
+    UNUSED(syntax);
+#endif
 }
 
 void emu_save_screenshot(const char* file_path)
@@ -1179,8 +1290,7 @@ static void update_debug_sprites(void)
 
         if (reload_palette)
         {
-            int colors = 1 << bpp;
-            int bytes_to_read = colors >> 1;
+            const int bytes_to_read = 8;
             for (int i = 0; i < bytes_to_read; i++)
             {
                 u8 byte = ram[tmpadr++];
@@ -1415,11 +1525,12 @@ static void render_debug_sprites(int count)
 
         int quadrant = 0;
         SpriteQuadPos pos = get_sprite_quad_pos(quadrant, start_quad, flip);
+        SpriteQuadPos size_pos = get_sprite_quad_pos(quadrant, start_quad, 0);
         SpriteQuadPos start_pos = pos;
         s32 dx = pos.left ? -1 : +1;
         s32 dy = pos.up ? -1 : +1;
         s32 cur_y = 0;
-        u16 vsizacum = vsizoff;
+        u16 vsizacum = size_pos.up ? 0 : vsizoff;
         u16 tiltacum = 0;
         s32 base_hpos_bb = 0;
         int safety = 0;
@@ -1434,6 +1545,24 @@ static void render_debug_sprites(int count)
             u16 data_begin = (u16)(cur_sprdline_bb + 1);
             u16 data_end = next_ptr;
 
+            if (sprdoff <= 1)
+            {
+                if (sprdoff == 0)
+                    break;
+
+                quadrant = (quadrant + 1) & 3;
+                pos = get_sprite_quad_pos(quadrant, start_quad, flip);
+                size_pos = get_sprite_quad_pos(quadrant, start_quad, 0);
+                dx = pos.left ? -1 : +1;
+                dy = pos.up ? -1 : +1;
+                cur_y = 0;
+                vsizacum = size_pos.up ? 0 : vsizoff;
+                if (pos.up != start_pos.up)
+                    cur_y += dy;
+                cur_sprdline_bb = next_ptr;
+                continue;
+            }
+
             vsizacum = vsizacum + cur_sprvsiz_bb;
             s16 pixel_height = MIN((s16)(vsizacum >> 8), (s16)k_sprite_buf_h);
             vsizacum &= 0x00FF;
@@ -1445,7 +1574,7 @@ static void render_debug_sprites(int count)
                     start_x += dx;
 
                 shift_reg_reset(&sr, data_begin);
-                u32 h_accum = hsizoff;
+                u32 h_accum = size_pos.left ? 0 : hsizoff;
                 s32 x = start_x;
 
                 if (literal_only)
@@ -1554,19 +1683,6 @@ static void render_debug_sprites(int count)
                 if (vertical_stretch)
                     cur_sprvsiz_bb += (s16)stretch_val * (s16)pixel_height;
 
-                if (sprdoff == 0)
-                    break;
-                else if (sprdoff == 1)
-                {
-                    quadrant = (quadrant + 1) & 3;
-                    pos = get_sprite_quad_pos(quadrant, start_quad, flip);
-                    dx = pos.left ? -1 : +1;
-                    dy = pos.up ? -1 : +1;
-                    cur_y = 0;
-                    vsizacum = vsizoff;
-                    if (pos.up != start_pos.up)
-                        cur_y += dy;
-                }
                 cur_sprdline_bb = next_ptr;
             }
         }
@@ -1613,11 +1729,12 @@ static void render_debug_sprites(int count)
 
         quadrant = 0;
         pos = get_sprite_quad_pos(quadrant, start_quad, flip);
+        size_pos = get_sprite_quad_pos(quadrant, start_quad, 0);
         start_pos = pos;
         dx = pos.left ? -1 : +1;
         dy = pos.up ? -1 : +1;
         cur_y = 0;
-        vsizacum = vsizoff;
+        vsizacum = size_pos.up ? 0 : vsizoff;
         tiltacum = 0;
         s32 base_hpos_r = 0;
         safety = 0;
@@ -1631,6 +1748,24 @@ static void render_debug_sprites(int count)
             u16 data_begin = (u16)(cur_sprdline_r + 1);
             u16 data_end = next_ptr;
 
+            if (sprdoff <= 1)
+            {
+                if (sprdoff == 0)
+                    break;
+
+                quadrant = (quadrant + 1) & 3;
+                pos = get_sprite_quad_pos(quadrant, start_quad, flip);
+                size_pos = get_sprite_quad_pos(quadrant, start_quad, 0);
+                dx = pos.left ? -1 : +1;
+                dy = pos.up ? -1 : +1;
+                cur_y = 0;
+                vsizacum = size_pos.up ? 0 : vsizoff;
+                if (pos.up != start_pos.up)
+                    cur_y += dy;
+                cur_sprdline_r = next_ptr;
+                continue;
+            }
+
             vsizacum = vsizacum + cur_sprvsiz_r;
             s16 pixel_height = MIN((s16)(vsizacum >> 8), (s16)k_sprite_buf_h);
             vsizacum &= 0x00FF;
@@ -1642,7 +1777,7 @@ static void render_debug_sprites(int count)
                     start_x += dx;
 
                 shift_reg_reset(&sr, data_begin);
-                u32 h_accum = hsizoff;
+                u32 h_accum = size_pos.left ? 0 : hsizoff;
                 s32 x = start_x;
 
                 if (literal_only)
@@ -1768,19 +1903,6 @@ static void render_debug_sprites(int count)
                 if (vertical_stretch)
                     cur_sprvsiz_r += (s16)stretch_val * (s16)pixel_height;
 
-                if (sprdoff == 0)
-                    break;
-                else if (sprdoff == 1)
-                {
-                    quadrant = (quadrant + 1) & 3;
-                    pos = get_sprite_quad_pos(quadrant, start_quad, flip);
-                    dx = pos.left ? -1 : +1;
-                    dy = pos.up ? -1 : +1;
-                    cur_y = 0;
-                    vsizacum = vsizoff;
-                    if (pos.up != start_pos.up)
-                        cur_y += dy;
-                }
                 cur_sprdline_r = next_ptr;
             }
         }
@@ -1828,10 +1950,10 @@ bool emu_is_vgm_recording(void)
     return core->GetAudio()->IsVgmRecording();
 }
 
-void emu_mcp_set_transport(int mode, int tcp_port)
+void emu_mcp_set_transport(int mode, int tcp_port, const char* tcp_address)
 {
     if (mcp_manager)
-        mcp_manager->SetTransportMode((McpTransportMode)mode, tcp_port);
+    mcp_manager->SetTransportMode((McpTransportMode)mode, tcp_port, tcp_address);
 }
 
 void emu_mcp_start(void)
@@ -1860,4 +1982,104 @@ void emu_mcp_pump_commands(void)
 {
     if (mcp_manager && mcp_manager->IsRunning())
         mcp_manager->PumpCommands(core);
+}
+
+void emu_debug_monitor_start(int port)
+{
+    if (debug_monitor)
+    {
+        if (debug_monitor->IsRunning())
+            debug_monitor->Stop();
+
+        SafeDelete(debug_monitor);
+        debug_monitor = new DebugMonitorServer(port);
+        debug_monitor->Init(core);
+        if (!debug_monitor->Start())
+        {
+            SafeDelete(debug_monitor);
+            return;
+        }
+
+        // Start framebuffer stream server on port+1
+        SafeDelete(fb_server);
+        fb_server = new FramebufferServer(port + 1);
+        if (!fb_server->Start())
+        {
+            Error("[DebugMonitor] Failed to start framebuffer stream on port %d", port + 1);
+            SafeDelete(fb_server);
+        }
+    }
+}
+
+void emu_debug_monitor_stop(void)
+{
+    if (fb_server)
+        fb_server->Stop();
+    if (debug_monitor)
+        debug_monitor->Stop();
+}
+
+bool emu_debug_monitor_is_running(void)
+{
+    return debug_monitor && debug_monitor->IsRunning();
+}
+
+int emu_debug_monitor_get_port(void)
+{
+    return debug_monitor ? debug_monitor->GetPort() : 0;
+}
+
+const char* emu_debug_monitor_get_address(void)
+{
+    return debug_monitor ? debug_monitor->GetAddress() : "";
+}
+
+void emu_debug_monitor_pump_commands(void)
+{
+    if (debug_monitor && debug_monitor->IsRunning())
+        debug_monitor->PumpCommands();
+}
+
+void emu_debug_monitor_notify_resumed(void)
+{
+    if (debug_monitor && debug_monitor->IsRunning())
+        debug_monitor->NotifyResumed();
+}
+
+void emu_debug_monitor_notify_stopped(bool breakpoint_hit, u16 pc)
+{
+    if (debug_monitor && debug_monitor->IsRunning())
+        debug_monitor->NotifyStopped(breakpoint_hit ? DM_STOP_BREAKPOINT : DM_STOP_STEP, pc);
+}
+
+void emu_debug_monitor_push_frame(void)
+{
+    if (fb_server && fb_server->IsRunning())
+    {
+        GLYNX_Runtime_Info runtime;
+        emu_get_runtime(runtime);
+        fb_server->PushFrame(emu_frame_buffer, runtime.screen_width, runtime.screen_height, runtime.screen_width);
+    }
+}
+
+void emu_render_current_frame(void)
+{
+    LcdScreen* lcd_screen = core->GetMikey()->GetLcdScreen();
+
+    if (!core->GetMedia()->IsBiosLoaded())
+    {
+        lcd_screen->RenderNoBiosScreen(emu_frame_buffer);
+        return;
+    }
+
+    lcd_screen->SetBuffer(emu_frame_buffer);
+    lcd_screen->EndFrame(core->GetMedia()->GetRotation());
+
+    if (config_debug.debug)
+        update_debug();
+}
+
+void emu_reset_rewind_timing(void)
+{
+    reset_rewind_timing();
 }

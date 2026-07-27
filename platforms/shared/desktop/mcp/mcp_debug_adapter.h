@@ -79,7 +79,7 @@ public:
     void StepInto();
     void StepOver();
     void StepOut();
-    void StepFrame();
+    void StepFrame(int frames = 1);
     void Reset();
     json GetDebugStatus();
     json RunToAddress(u16 address);
@@ -123,17 +123,22 @@ public:
     // Media and state management
     json GetMediaInfo();
     json ListRecentMedia();
-    json LoadMedia(const std::string& file_path);
+    json StartLoadMedia(const std::string& file_path);
+    bool IsMediaLoading() const;
+    json FinishLoadMedia(const std::string& file_path);
     json LoadBios(const std::string& file_path);
     json ListSaveStateSlots();
     json SelectSaveStateSlot(int slot);
     json SaveState();
     json LoadState();
+    json SaveStateFile(const std::string& file_path);
+    json LoadStateFile(const std::string& file_path);
     json SetFastForwardSpeed(int speed);
     json ToggleFastForward(bool enabled);
 
     // Controller input
     json ControllerButton(const std::string& button, const std::string& action);
+    json GetInputState();
 
     // Disassembler operations
     json AddDisassemblerBookmark(u16 address, const std::string& name);
@@ -143,6 +148,8 @@ public:
     json RemoveSymbol(u16 address);
     json LoadSymbols(const std::string& file_path);
     json ListSymbols();
+    json LookupSymbolByName(const std::string& name);
+    json LookupSymbolAtAddress(u16 address);
     json ListCallStack();
 
     // Memory area operations

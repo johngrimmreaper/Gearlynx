@@ -25,57 +25,11 @@
     <Filter Include="desktop\mcp">
       <UniqueIdentifier>{a3b8c9d0-e1f2-3a4b-5c6d-7e8f9a0b1c2d}</UniqueIdentifier>
     </Filter>
+    <Filter Include="desktop\vscode">
+      <UniqueIdentifier>{c4d5e6f7-a8b9-4c0d-8e1f-2a3b4c5d6e7f}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\shared\desktop\imgui\fonts\IconsMaterialDesign.h">
-      <Filter>desktop\imgui\fonts</Filter>
-    </ClInclude>
-    <ClInclude Include="..\shared\desktop\imgui\fonts\MaterialIcons.h">
-      <Filter>desktop\imgui\fonts</Filter>
-    </ClInclude>
-    <ClInclude Include="..\shared\desktop\imgui\fonts\RobotoMedium.h">
-      <Filter>desktop\imgui\fonts</Filter>
-    </ClInclude>
-    <ClInclude Include="..\shared\desktop\imgui\imconfig.h">
-      <Filter>desktop\imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="..\shared\desktop\imgui\imgui.h">
-      <Filter>desktop\imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="..\shared\desktop\imgui\imgui_impl_opengl3.h">
-      <Filter>desktop\imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="..\shared\desktop\imgui\imgui_impl_opengl3_loader.h">
-      <Filter>desktop\imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="..\shared\desktop\imgui\imgui_impl_sdl3.h">
-      <Filter>desktop\imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="..\shared\desktop\imgui\imgui_internal.h">
-      <Filter>desktop\imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="..\shared\desktop\imgui\implot.h">
-      <Filter>desktop\imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="..\shared\desktop\imgui\implot_internal.h">
-      <Filter>desktop\imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="..\shared\desktop\imgui\imstb_rectpack.h">
-      <Filter>desktop\imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="..\shared\desktop\imgui\imstb_textedit.h">
-      <Filter>desktop\imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="..\shared\desktop\imgui\imstb_truetype.h">
-      <Filter>desktop\imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="..\shared\desktop\mINI\ini.h">
-      <Filter>desktop\mini</Filter>
-    </ClInclude>
-    <ClInclude Include="..\shared\desktop\stb\stb_image_write.h">
-      <Filter>desktop\stb</Filter>
-    </ClInclude>
-
     <ClInclude Include="..\shared\desktop\application.h">
       <Filter>desktop</Filter>
     </ClInclude>
@@ -104,6 +58,9 @@
       <Filter>desktop</Filter>
     </ClInclude>
     <ClInclude Include="..\shared\desktop\rewind.h">
+      <Filter>desktop</Filter>
+    </ClInclude>
+    <ClInclude Include="..\shared\desktop\runahead.h">
       <Filter>desktop</Filter>
     </ClInclude>
     <ClInclude Include="..\shared\desktop\gui_debug.h">
@@ -199,6 +156,15 @@
     <ClInclude Include="..\shared\desktop\sound_queue.h">
       <Filter>desktop</Filter>
     </ClInclude>
+    <ClInclude Include="..\shared\desktop\vscode\debug_monitor_server.h">
+      <Filter>desktop\vscode</Filter>
+    </ClInclude>
+    <ClInclude Include="..\shared\desktop\vscode\framebuffer_server.h">
+      <Filter>desktop\vscode</Filter>
+    </ClInclude>
+    <ClInclude Include="..\shared\desktop\socket_types.h">
+      <Filter>desktop</Filter>
+    </ClInclude>
     <ClInclude Include="..\shared\desktop\utils.h">
       <Filter>desktop</Filter>
     </ClInclude>
@@ -212,6 +178,15 @@
       <Filter>core</Filter>
     </ClInclude>
     <ClInclude Include="..\..\src\bus.h">
+      <Filter>core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\game_drive.h">
+      <Filter>core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\game_drive_filesystem.h">
+      <Filter>core</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\game_drive_inline.h">
       <Filter>core</Filter>
     </ClInclude>
     <ClInclude Include="..\..\src\media.h">
@@ -337,38 +312,25 @@
     <ClInclude Include="..\shared\desktop\single_instance.h">
       <Filter>desktop</Filter>
     </ClInclude>
+    <ClInclude Include="..\shared\dependencies\miniz\miniz.h" />
+    <ClInclude Include="..\shared\dependencies\imgui\fonts\IconsMaterialDesign.h" />
+    <ClInclude Include="..\shared\dependencies\imgui\fonts\MaterialIcons.h" />
+    <ClInclude Include="..\shared\dependencies\imgui\fonts\RobotoMedium.h" />
+    <ClInclude Include="..\shared\dependencies\imgui\imconfig.h" />
+    <ClInclude Include="..\shared\dependencies\imgui\imgui.h" />
+    <ClInclude Include="..\shared\dependencies\imgui\imgui_impl_opengl3.h" />
+    <ClInclude Include="..\shared\dependencies\imgui\imgui_impl_opengl3_loader.h" />
+    <ClInclude Include="..\shared\dependencies\imgui\imgui_impl_sdl3.h" />
+    <ClInclude Include="..\shared\dependencies\imgui\imgui_internal.h" />
+    <ClInclude Include="..\shared\dependencies\imgui\implot.h" />
+    <ClInclude Include="..\shared\dependencies\imgui\implot_internal.h" />
+    <ClInclude Include="..\shared\dependencies\imgui\imstb_rectpack.h" />
+    <ClInclude Include="..\shared\dependencies\imgui\imstb_textedit.h" />
+    <ClInclude Include="..\shared\dependencies\imgui\imstb_truetype.h" />
+    <ClInclude Include="..\shared\dependencies\mINI\ini.h" />
+    <ClInclude Include="..\shared\dependencies\stb\stb_image_write.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\shared\desktop\imgui\imgui.cpp">
-      <Filter>desktop\imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="..\shared\desktop\imgui\imgui_demo.cpp">
-      <Filter>desktop\imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="..\shared\desktop\imgui\imgui_draw.cpp">
-      <Filter>desktop\imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="..\shared\desktop\imgui\imgui_impl_opengl3.cpp">
-      <Filter>desktop\imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="..\shared\desktop\imgui\imgui_impl_sdl3.cpp">
-      <Filter>desktop\imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="..\shared\desktop\imgui\imgui_tables.cpp">
-      <Filter>desktop\imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="..\shared\desktop\imgui\imgui_widgets.cpp">
-      <Filter>desktop\imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="..\shared\desktop\imgui\implot.cpp">
-      <Filter>desktop\imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="..\shared\desktop\imgui\implot_demo.cpp">
-      <Filter>desktop\imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="..\shared\desktop\imgui\implot_items.cpp">
-      <Filter>desktop\imgui</Filter>
-    </ClCompile>
     <ClCompile Include="..\shared\desktop\application.cpp">
       <Filter>desktop</Filter>
     </ClCompile>
@@ -391,6 +353,9 @@
       <Filter>desktop</Filter>
     </ClCompile>
     <ClCompile Include="..\shared\desktop\rewind.cpp">
+      <Filter>desktop</Filter>
+    </ClCompile>
+    <ClCompile Include="..\shared\desktop\runahead.cpp">
       <Filter>desktop</Filter>
     </ClCompile>
     <ClCompile Include="..\shared\desktop\gui_debug.cpp">
@@ -474,10 +439,22 @@
     <ClCompile Include="..\shared\desktop\sound_queue.cpp">
       <Filter>desktop</Filter>
     </ClCompile>
+    <ClCompile Include="..\shared\desktop\vscode\debug_monitor_server.cpp">
+      <Filter>desktop\vscode</Filter>
+    </ClCompile>
+    <ClCompile Include="..\shared\desktop\vscode\framebuffer_server.cpp">
+      <Filter>desktop\vscode</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\src\audio.cpp">
       <Filter>core</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\bus.cpp">
+      <Filter>core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\game_drive.cpp">
+      <Filter>core</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\game_drive_filesystem_native.cpp">
       <Filter>core</Filter>
     </ClCompile>
     <ClCompile Include="..\..\src\media.cpp">
@@ -522,11 +499,31 @@
     <ClCompile Include="..\shared\desktop\mcp\mcp_debug_adapter.cpp">
       <Filter>desktop\mcp</Filter>
     </ClCompile>
+    <ClCompile Include="..\shared\desktop\mcp\mcp_tool_registry.cpp">
+      <Filter>desktop\mcp</Filter>
+    </ClCompile>
     <ClCompile Include="..\shared\desktop\mcp\mcp_server.cpp">
       <Filter>desktop\mcp</Filter>
     </ClCompile>
     <ClCompile Include="..\shared\desktop\single_instance.cpp">
       <Filter>desktop</Filter>
     </ClCompile>
+    <ClCompile Include="..\shared\dependencies\miniz\miniz.c" />
+    <ClCompile Include="..\shared\dependencies\imgui\imgui.cpp" />
+    <ClCompile Include="..\shared\dependencies\imgui\imgui_demo.cpp" />
+    <ClCompile Include="..\shared\dependencies\imgui\imgui_draw.cpp" />
+    <ClCompile Include="..\shared\dependencies\imgui\imgui_impl_opengl3.cpp" />
+    <ClCompile Include="..\shared\dependencies\imgui\imgui_impl_sdl3.cpp" />
+    <ClCompile Include="..\shared\dependencies\imgui\imgui_tables.cpp" />
+    <ClCompile Include="..\shared\dependencies\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="..\shared\dependencies\imgui\implot.cpp" />
+    <ClCompile Include="..\shared\dependencies\imgui\implot_demo.cpp" />
+    <ClCompile Include="..\shared\dependencies\imgui\implot_items.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Gearlynx.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="Gearlynx.ico" />
   </ItemGroup>
 </Project>

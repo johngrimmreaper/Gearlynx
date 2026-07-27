@@ -102,9 +102,11 @@ public:
     void DisassembleAhead(u16 start_address, int count, int depth);
     void SetResetValue(int value);
     void EnableBreakpoints(bool enable, u8 irqs);
+    void SetDebugBRK(bool enable, u8 value, bool trigger_irq);
     void SetSkipIRQOnStep(bool skip);
     bool BreakpointHit();
     bool RunToBreakpointHit();
+    bool GetBreakpointHitAddress(u16* address);
     void ResetBreakpoints();
     bool AddBreakpoint(char* text, bool read, bool write, bool execute);
     bool AddBreakpoint(u16 address);
@@ -112,6 +114,8 @@ public:
     void RemoveBreakpoint(u16 address);
     bool IsBreakpoint(u16 address);
     std::vector<GLYNX_Breakpoint>* GetBreakpoints();
+    void SetDisassemblerSyntax(GLYNX_Disassembler_Syntax syntax);
+    GLYNX_Disassembler_Syntax GetDisassemblerSyntax() const;
     void ClearDisassemblerCallStack();
     std::stack<GLYNX_CallStackEntry>* GetDisassemblerCallStack();
     void CheckMemoryBreakpoints(u16 address, bool read);
@@ -134,13 +138,20 @@ private:
     u8 m_breakpoints_irq_enabled;
     bool m_cpu_breakpoint_hit;
     bool m_memory_breakpoint_hit;
+    bool m_debug_brk_breakpoint_hit;
+    bool m_breakpoint_hit_address_valid;
+    u16 m_breakpoint_hit_address;
     bool m_run_to_breakpoint_hit;
     std::vector<GLYNX_Breakpoint> m_breakpoints;
     GLYNX_Breakpoint m_run_to_breakpoint;
     bool m_run_to_breakpoint_requested;
+    bool m_debug_brk_enabled;
+    u8 m_debug_brk_value;
+    bool m_debug_brk_trigger_irq;
     bool m_skip_irq_on_step;
     std::stack<GLYNX_CallStackEntry> m_disassembler_call_stack;
     int m_disassembler_call_stack_size;
+    GLYNX_Disassembler_Syntax m_disassembler_syntax;
     int m_reset_value;
     bool m_stream_open;
     u16 m_prev_opcode_address;
@@ -150,6 +161,7 @@ private:
 private:
     void HandleIRQ();
     void CheckIRQs();
+    void SetBreakpointHitAddress(u16 address);
 
     void CheckBreakpoints();
     void PushCallStack(u16 src, u16 dest, u16 back);
@@ -193,6 +205,9 @@ private:
     u16 AbsoluteIndexedIndirectAddressing();
 
     void PopulateDisassemblerRecord(GLYNX_Disassembler_Record* record, u8 opcode, u16 address);
+    void SetDisassemblerOperandText(GLYNX_Disassembler_Record* record, const char* text);
+    void SetDisassemblerOperand(GLYNX_Disassembler_Record* record, u16 address, bool is_zp, const char* text);
+    void FormatDisassemblerDataBytes(char* text, size_t text_size, const u8* bytes, u8 size);
     void InvalidateOverlappingRecords(u16 address, u8 opcode_size);
 
     void Serialize(StateSerializer& s);

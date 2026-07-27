@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|ARM64">
@@ -23,6 +23,9 @@
     <ClInclude Include="..\..\src\audio_inline.h" />
     <ClInclude Include="..\..\src\bit_ops.h" />
     <ClInclude Include="..\..\src\bus.h" />
+    <ClInclude Include="..\..\src\game_drive.h" />
+    <ClInclude Include="..\..\src\game_drive_filesystem.h" />
+    <ClInclude Include="..\..\src\game_drive_inline.h" />
     <ClInclude Include="..\..\src\media.h" />
     <ClInclude Include="..\..\src\media_inline.h" />
     <ClInclude Include="..\..\src\eeprom.h" />
@@ -66,10 +69,14 @@
     <ClInclude Include="..\shared\desktop\backers.h" />
     <ClInclude Include="..\shared\desktop\config.h" />
     <ClInclude Include="..\shared\desktop\console_utils.h" />
+    <ClInclude Include="..\shared\desktop\vscode\debug_monitor_server.h" />
+    <ClInclude Include="..\shared\desktop\vscode\framebuffer_server.h" />
+    <ClInclude Include="..\shared\desktop\socket_types.h" />
     <ClInclude Include="..\shared\desktop\emu.h" />
     <ClInclude Include="..\shared\desktop\gui.h" />
     <ClInclude Include="..\shared\desktop\gui_actions.h" />
     <ClInclude Include="..\shared\desktop\rewind.h" />
+    <ClInclude Include="..\shared\desktop\runahead.h" />
     <ClInclude Include="..\shared\desktop\gui_debug.h" />
     <ClInclude Include="..\shared\desktop\gui_debug_constants.h" />
     <ClInclude Include="..\shared\desktop\gui_debug_disassembler.h" />
@@ -127,6 +134,8 @@
   <ItemGroup>
     <ClCompile Include="..\..\src\audio.cpp" />
     <ClCompile Include="..\..\src\bus.cpp" />
+    <ClCompile Include="..\..\src\game_drive.cpp" />
+    <ClCompile Include="..\..\src\game_drive_filesystem_native.cpp" />
     <ClCompile Include="..\..\src\media.cpp" />
     <ClCompile Include="..\..\src\gearlynx_core.cpp" />
     <ClCompile Include="..\..\src\input.cpp" />
@@ -147,10 +156,13 @@
     <ClCompile Include="..\shared\desktop\application_headless.cpp" />
     <ClCompile Include="..\shared\desktop\events.cpp" />
     <ClCompile Include="..\shared\desktop\config.cpp" />
+    <ClCompile Include="..\shared\desktop\vscode\debug_monitor_server.cpp" />
+    <ClCompile Include="..\shared\desktop\vscode\framebuffer_server.cpp" />
     <ClCompile Include="..\shared\desktop\emu.cpp" />
     <ClCompile Include="..\shared\desktop\gui.cpp" />
     <ClCompile Include="..\shared\desktop\gui_actions.cpp" />
     <ClCompile Include="..\shared\desktop\rewind.cpp" />
+    <ClCompile Include="..\shared\desktop\runahead.cpp" />
     <ClCompile Include="..\shared\desktop\gui_debug.cpp" />
     <ClCompile Include="..\shared\desktop\gui_debug_disassembler.cpp" />
     <ClCompile Include="..\shared\desktop\gui_debug_eeprom.cpp" />
@@ -209,6 +221,7 @@
     <ClCompile Include="..\shared\desktop\gamepad.cpp" />
     <ClCompile Include="..\shared\desktop\sound_queue.cpp" />
     <ClCompile Include="..\shared\desktop\mcp\mcp_debug_adapter.cpp" />
+    <ClCompile Include="..\shared\desktop\mcp\mcp_tool_registry.cpp" />
     <ClCompile Include="..\shared\desktop\mcp\mcp_server.cpp" />
     <ClCompile Include="..\shared\desktop\single_instance.cpp" />
   </ItemGroup>
@@ -227,7 +240,7 @@
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
-    <PlatformToolSet>v143</PlatformToolSet>
+    <PlatformToolSet>v145</PlatformToolSet>
     <OutputDirectory>release\</OutputDirectory>
     <ATLMinimizesCRunTimeLibraryUsage>false</ATLMinimizesCRunTimeLibraryUsage>
     <CharacterSet>NotSet</CharacterSet>
@@ -236,7 +249,7 @@
     <PrimaryOutput>Gearlynx</PrimaryOutput>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'" Label="Configuration">
-    <PlatformToolSet>v143</PlatformToolSet>
+    <PlatformToolSet>v145</PlatformToolSet>
     <OutputDirectory>release\</OutputDirectory>
     <ATLMinimizesCRunTimeLibraryUsage>false</ATLMinimizesCRunTimeLibraryUsage>
     <CharacterSet>NotSet</CharacterSet>
@@ -245,7 +258,7 @@
     <PrimaryOutput>Gearlynx</PrimaryOutput>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
-    <PlatformToolSet>v143</PlatformToolSet>
+    <PlatformToolSet>v145</PlatformToolSet>
     <OutputDirectory>debug\</OutputDirectory>
     <ATLMinimizesCRunTimeLibraryUsage>false</ATLMinimizesCRunTimeLibraryUsage>
     <CharacterSet>NotSet</CharacterSet>
@@ -254,7 +267,7 @@
     <PrimaryOutput>Gearlynx</PrimaryOutput>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'" Label="Configuration">
-    <PlatformToolSet>v143</PlatformToolSet>
+    <PlatformToolSet>v145</PlatformToolSet>
     <OutputDirectory>debug\</OutputDirectory>
     <ATLMinimizesCRunTimeLibraryUsage>false</ATLMinimizesCRunTimeLibraryUsage>
     <CharacterSet>NotSet</CharacterSet>
@@ -308,7 +321,7 @@
       <ExceptionHandling>Sync</ExceptionHandling>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <Optimization>MaxSpeed</Optimization>
-      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;UNICODE;WIN32;WIN64;NDEBUG;EMULATOR_BUILD="$(EmulatorBuild)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;UNICODE;WIN32;WIN64;NDEBUG;EMULATOR_BUILD="$(EmulatorBuild)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessToFile>false</PreprocessToFile>
       <ProgramDataBaseFileName>$(IntDir)vc$(PlatformToolsetVersion).pdb</ProgramDataBaseFileName>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
@@ -349,7 +362,7 @@
       <ExceptionHandling>Sync</ExceptionHandling>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <Optimization>MaxSpeed</Optimization>
-      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;UNICODE;WIN32;WIN64;NDEBUG;EMULATOR_BUILD="$(EmulatorBuild)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;UNICODE;WIN32;WIN64;NDEBUG;EMULATOR_BUILD="$(EmulatorBuild)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessToFile>false</PreprocessToFile>
       <ProgramDataBaseFileName>$(IntDir)vc$(PlatformToolsetVersion).pdb</ProgramDataBaseFileName>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
@@ -390,7 +403,7 @@
       <ExceptionHandling>Sync</ExceptionHandling>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;DEBUG;UNICODE;WIN32;WIN64;EMULATOR_BUILD="$(EmulatorBuild)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;DEBUG;UNICODE;WIN32;WIN64;EMULATOR_BUILD="$(EmulatorBuild)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessToFile>false</PreprocessToFile>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
@@ -430,7 +443,7 @@
       <ExceptionHandling>Sync</ExceptionHandling>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;DEBUG;UNICODE;WIN32;WIN64;EMULATOR_BUILD="$(EmulatorBuild)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;DEBUG;UNICODE;WIN32;WIN64;EMULATOR_BUILD="$(EmulatorBuild)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessToFile>false</PreprocessToFile>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>

@@ -33,6 +33,8 @@ INLINE u32 M6502::RunInstruction()
 #if !defined(GLYNX_DISABLE_DISASSEMBLER)
     m_memory_breakpoint_hit = false;
     m_cpu_breakpoint_hit = false;
+    m_debug_brk_breakpoint_hit = false;
+    m_breakpoint_hit_address_valid = false;
 #endif
 
     m_s.cycles = 0;
@@ -46,6 +48,7 @@ INLINE u32 M6502::RunInstruction()
         if (m_s.irq_asserted)
         {
             m_s.halted = false;
+            m_prev_opcode_address = m_s.PC.GetValue();
             CheckIRQs();
             if(m_s.irq_pending && !m_skip_irq_on_step)
                 HandleIRQ();
@@ -57,6 +60,7 @@ INLINE u32 M6502::RunInstruction()
     {
         m_prev_opcode_address = m_s.PC.GetValue();
         u8 opcode = FetchOpcode8();
+        m_s.cycles += m_opcode_cycles[opcode];
 
         CheckIRQs();
         (this->*m_opcodes[opcode])();
@@ -85,7 +89,6 @@ INLINE u32 M6502::RunInstruction()
         }
 #endif
 
-        m_s.cycles += m_opcode_cycles[opcode];
     }
 
     u32 ticks = (m_s.cycles * k_bus_cycles_int_tick_factor) - (u32)m_s.page_mode_discounts;
@@ -161,6 +164,19 @@ INLINE void M6502::SetPageModeEnabled(bool enabled)
 INLINE void M6502::SetSkipIRQOnStep(bool skip)
 {
     m_skip_irq_on_step = skip;
+}
+
+INLINE void M6502::SetDebugBRK(bool enable, u8 value, bool trigger_irq)
+{
+    m_debug_brk_enabled = enable;
+    m_debug_brk_value = value;
+    m_debug_brk_trigger_irq = trigger_irq;
+}
+
+INLINE void M6502::SetBreakpointHitAddress(u16 address)
+{
+    m_breakpoint_hit_address_valid = true;
+    m_breakpoint_hit_address = address;
 }
 
 INLINE u8 M6502::FetchOpcode8()
@@ -579,6 +595,48 @@ INLINE void M6502::InvalidateOverlappingRecords(u16 address, u8 opcode_size)
 #endif
 }
 
+INLINE void M6502::SetDisassemblerOperandText(GLYNX_Disassembler_Record* record, const char* text)
+{
+    if (!IsValidPointer(text) || (text[0] == 0))
+        return;
+
+    const char* match = record->name;
+    const char* last_match = NULL;
+    while ((match = strstr(match, text)) != NULL)
+    {
+        last_match = match;
+        match++;
+    }
+
+    if (IsValidPointer(last_match))
+    {
+        record->operand_offset = (int)(last_match - record->name);
+        record->operand_length = (int)strlen(text);
+    }
+}
+
+INLINE void M6502::SetDisassemblerOperand(GLYNX_Disassembler_Record* record, u16 address, bool is_zp, const char* text)
+{
+    record->has_operand_address = true;
+    record->operand_address = address;
+    record->operand_is_zp = is_zp;
+    SetDisassemblerOperandText(record, text);
+}
+
+INLINE void M6502::FormatDisassemblerDataBytes(char* text, size_t text_size, const u8* bytes, u8 size)
+{
+    const char* directive = ".byte";
+
+    if (m_disassembler_syntax == GLYNX_Disassembler_Syntax_LYXASS)
+        directive = ".db";
+    else if (m_disassembler_syntax == GLYNX_Disassembler_Syntax_MADS)
+        directive = "dta";
+
+    int pos = snprintf(text, text_size, "{n}%s ", directive);
+    for (u8 i = 0; i < size && pos > 0 && pos < (int)text_size; i++)
+        pos += snprintf(text + pos, text_size - pos, "%s{o}$%02X", (i == 0) ? "" : ",", bytes[i]);
+}
+
 INLINE void M6502::PopulateDisassemblerRecord(GLYNX_Disassembler_Record* record, u8 opcode, u16 address)
 {
 #if !defined(GLYNX_DISABLE_DISASSEMBLER)
@@ -598,6 +656,8 @@ INLINE void M6502::PopulateDisassemblerRecord(GLYNX_Disassembler_Record* record,
     record->has_operand_address = false;
     record->operand_address = 0;
     record->operand_is_zp = false;
+    record->operand_offset = 0;
+    record->operand_length = 0;
 
     if (m_s.debug_next_irq > 0)
     {
@@ -618,46 +678,53 @@ INLINE void M6502::PopulateDisassemblerRecord(GLYNX_Disassembler_Record* record,
 
     u8 op1 = record->opcodes[1];
     u8 op2 = record->opcodes[2];
+    const char* format = k_m6502_opcode_names[opcode].name[m_disassembler_syntax];
 
     switch (k_m6502_opcode_names[opcode].type)
     {
         case GLYNX_OPCode_Type_Implied:
         {
-            snprintf(record->name, 64, "%s", k_m6502_opcode_names[opcode].name);
+            snprintf(record->name, 64, "%s", format);
             break;
         }
         case GLYNX_OPCode_Type_1b:
         {
-            if (!strstr(k_m6502_opcode_names[opcode].name, "#$"))
+            bool has_address = !strstr(k_m6502_opcode_names[opcode].name[GLYNX_Disassembler_Syntax_Gearlynx], "#$");
+            snprintf(record->name, 64, format, op1);
+            if (has_address)
             {
-                record->has_operand_address = true;
-                record->operand_address = op1;
-                record->operand_is_zp = true;
+                char operand_text[8];
+                snprintf(operand_text, sizeof(operand_text), "$%02X", op1);
+                SetDisassemblerOperand(record, op1, true, operand_text);
             }
-            snprintf(record->name, 64, k_m6502_opcode_names[opcode].name, op1);
             break;
         }
         case GLYNX_OPCode_Type_1b_1b:
         {
-            snprintf(record->name, 64, k_m6502_opcode_names[opcode].name, op1, op2);
+            snprintf(record->name, 64, format, op1, op2);
             break;
         }
         case GLYNX_OPCode_Type_1b_2b:
         {
-            snprintf(record->name, 64, k_m6502_opcode_names[opcode].name, op1, op2 | (m_memory->Read<true>(address + 3) << 8));
+            u16 operand = op2 | (m_memory->Read<true>(address + 3) << 8);
+            snprintf(record->name, 64, format, op1, operand);
+            char operand_text[8];
+            snprintf(operand_text, sizeof(operand_text), "$%04X", operand);
+            SetDisassemblerOperand(record, operand, false, operand_text);
             break;
         }
         case GLYNX_OPCode_Type_2b:
         {
             u16 operand = op1 | (op2 << 8);
-            record->has_operand_address = true;
-            record->operand_address = operand;
-            snprintf(record->name, 64, k_m6502_opcode_names[opcode].name, operand);
+            snprintf(record->name, 64, format, operand);
+            char operand_text[8];
+            snprintf(operand_text, sizeof(operand_text), "$%04X", operand);
+            SetDisassemblerOperand(record, operand, false, operand_text);
             break;
         }
         case GLYNX_OPCode_Type_2b_2b_2b:
         {
-            snprintf(record->name, 64, k_m6502_opcode_names[opcode].name, op1 | (op2 << 8), m_memory->Read<true>(address + 3) | (m_memory->Read<true>(address + 4) << 8), m_memory->Read<true>(address + 5) | (m_memory->Read<true>(address + 6) << 8));
+            snprintf(record->name, 64, format, op1 | (op2 << 8), m_memory->Read<true>(address + 3) | (m_memory->Read<true>(address + 4) << 8), m_memory->Read<true>(address + 5) | (m_memory->Read<true>(address + 6) << 8));
             break;
         }
         case GLYNX_OPCode_Type_1b_Relative:
@@ -666,7 +733,21 @@ INLINE void M6502::PopulateDisassemblerRecord(GLYNX_Disassembler_Record* record,
             u16 jump_address = address + 2 + rel;
             record->jump = true;
             record->jump_address = jump_address;
-            snprintf(record->name, 64, k_m6502_opcode_names[opcode].name, jump_address, rel);
+            if (m_disassembler_syntax == GLYNX_Disassembler_Syntax_Gearlynx)
+            {
+                snprintf(record->name, 64, format, jump_address, rel);
+                char operand_text[8];
+                snprintf(operand_text, sizeof(operand_text), "$%04X", jump_address);
+                SetDisassemblerOperandText(record, operand_text);
+            }
+            else
+            {
+                int operand = rel + 2;
+                snprintf(record->name, 64, format, operand);
+                char operand_text[16];
+                snprintf(operand_text, sizeof(operand_text), "*%+d", operand);
+                SetDisassemblerOperandText(record, operand_text);
+            }
             break;
         }
         case GLYNX_OPCode_Type_1b_1b_Relative:
@@ -675,7 +756,63 @@ INLINE void M6502::PopulateDisassemblerRecord(GLYNX_Disassembler_Record* record,
             u16 jump_address = address + 3 + rel;
             record->jump = true;
             record->jump_address = jump_address;
-            snprintf(record->name, 64, k_m6502_opcode_names[opcode].name, op1, jump_address, rel);
+            if (m_disassembler_syntax == GLYNX_Disassembler_Syntax_Gearlynx)
+            {
+                snprintf(record->name, 64, format, op1, jump_address, rel);
+                char operand_text[8];
+                snprintf(operand_text, sizeof(operand_text), "$%04X", jump_address);
+                SetDisassemblerOperandText(record, operand_text);
+            }
+            else if (m_disassembler_syntax == GLYNX_Disassembler_Syntax_MADS)
+            {
+                snprintf(record->name, 64, format, op1, op2);
+            }
+            else if (m_disassembler_syntax == GLYNX_Disassembler_Syntax_CC65)
+            {
+                int operand = rel + 1;
+                snprintf(record->name, 64, format, op1, operand);
+                char operand_text[16];
+                snprintf(operand_text, sizeof(operand_text), "*%+d", operand);
+                SetDisassemblerOperandText(record, operand_text);
+            }
+            else
+            {
+                int operand = rel + 3;
+                snprintf(record->name, 64, format, op1, operand);
+                char operand_text[16];
+                snprintf(operand_text, sizeof(operand_text), "*%+d", operand);
+                SetDisassemblerOperandText(record, operand_text);
+            }
+            break;
+        }
+        case GLYNX_OPCode_Type_BRK:
+        {
+            if (m_disassembler_syntax == GLYNX_Disassembler_Syntax_Gearlynx)
+            {
+                if (op1 == 0x00)
+                    snprintf(record->name, 64, "{n}BRK");
+                else
+                    snprintf(record->name, 64, "{n}BRK {o}#$%02X", op1);
+            }
+            else if (m_disassembler_syntax == GLYNX_Disassembler_Syntax_MADS)
+            {
+                if (op1 == 0x00)
+                    snprintf(record->name, 64, "%s", format);
+                else
+                    snprintf(record->name, 64, "{n}dta {o}$00,$%02X", op1);
+            }
+            else
+            {
+                snprintf(record->name, 64, format, op1);
+            }
+            break;
+        }
+        case GLYNX_OPCode_Type_Data:
+        {
+            if (m_disassembler_syntax == GLYNX_Disassembler_Syntax_Gearlynx)
+                snprintf(record->name, 64, "%s", format);
+            else
+                FormatDisassemblerDataBytes(record->name, sizeof(record->name), record->opcodes, opcode_size);
             break;
         }
         default:
@@ -706,7 +843,7 @@ INLINE void M6502::PopulateDisassemblerRecord(GLYNX_Disassembler_Record* record,
         snprintf(record->auto_symbol, 64, k_irq_auto_symbol_format[record->irq], address);
     }
 
-    if (record->jump && record->jump_address != 0)
+    if (record->jump)
     {
         GLYNX_Disassembler_Record* target = m_memory->GetOrCreateDisassemblerRecord(record->jump_address);
         if (IsValidPointer(target))
@@ -784,7 +921,7 @@ inline void M6502::DisassembleAhead(u16 start_address, int count, int depth)
             m_s.debug_next_irq = saved_irq;
         }
 
-        if (record->jump && record->jump_address != 0)
+        if (record->jump)
         {
             DisassembleAhead(record->jump_address, count / 2, depth + 1);
         }

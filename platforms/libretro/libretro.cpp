@@ -25,6 +25,8 @@
 #include <math.h>
 #include "libretro.h"
 #include "gearlynx.h"
+#include "game_drive.h"
+#include "game_drive_filesystem_libretro.h"
 #include "libretro_core_options.h"
 
 #ifdef _WIN32
@@ -63,11 +65,14 @@ static float current_fps = 60.0f;
 
 static bool allow_up_down = false;
 static bool categories_supported = false;
+static bool content_info_ext_supported = false;
 
-static bool libretro_supports_bitmasks;
+static bool libretro_supports_bitmasks = false;
 static int joypad_current[MAX_PADS][JOYPAD_BUTTONS];
 static int joypad_old[MAX_PADS][JOYPAD_BUTTONS];
-static unsigned input_device[MAX_PADS];
+static unsigned input_device[MAX_PADS] = {
+    RETRO_DEVICE_LYNX_PAD
+};
 
 static GLYNX_Keys keymap[] = {
     GLYNX_KEY_UP,
@@ -85,6 +90,9 @@ static GearlynxCore* core;
 static u8* frame_buffer;
 
 static void set_controller_info(void);
+static void clear_input_state(void);
+static void reset_controller_devices(void);
+static void apply_controller_device(unsigned port, unsigned device, bool log_device);
 static void update_input(void);
 static void check_variables(void);
 
@@ -100,6 +108,11 @@ static void fallback_log(enum retro_log_level level, const char *fmt, ...)
 static int IsButtonPressed(int joypad_bits, int button)
 {
     return (joypad_bits & (1 << button)) ? 1 : 0;
+}
+
+static bool IsJoypadDevice(unsigned device)
+{
+    return ((device == RETRO_DEVICE_JOYPAD) || (device == RETRO_DEVICE_LYNX_PAD));
 }
 
 static void load_bootroms(void)
@@ -190,7 +203,7 @@ void retro_set_environment(retro_environment_t cb)
         { NULL, false, false }
     };
 
-    environ_cb(RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE, (void*)content_overrides);
+    content_info_ext_supported = environ_cb(RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE, (void*)content_overrides);
     set_controller_info();
     libretro_set_core_options(environ_cb, &categories_supported);
 }
@@ -210,6 +223,15 @@ void retro_init(void)
 
     log_cb(RETRO_LOG_INFO, "%s (%s) libretro\n", GLYNX_TITLE, GLYNX_VERSION);
 
+    struct retro_vfs_interface_info vfs_interface_info = {};
+    vfs_interface_info.required_interface_version = 3;
+    vfs_interface_info.iface = NULL;
+
+    if (environ_cb(RETRO_ENVIRONMENT_GET_VFS_INTERFACE, &vfs_interface_info) && vfs_interface_info.iface)
+        game_drive_set_vfs_interface(vfs_interface_info.iface);
+    else
+        game_drive_set_vfs_interface(NULL);
+
     core = new GearlynxCore();
 
     core->Init(GLYNX_PIXEL_RGB565);
@@ -217,17 +239,10 @@ void retro_init(void)
 
     frame_buffer = new u8[256 * 256 * 2];
 
-    for (int i = 0; i < MAX_PADS; i++)
-    {
-        for (int j = 0; j < JOYPAD_BUTTONS; j++)
-        {
-            joypad_current[i][j] = 0;
-            joypad_old[i][j] = 0;
-        }
-    }
+    clear_input_state();
 
     for (int i = 0; i < MAX_PADS; i++)
-        input_device[i] = RETRO_DEVICE_LYNX_PAD;
+        apply_controller_device(i, input_device[i], false);
 
     libretro_supports_bitmasks = environ_cb(RETRO_ENVIRONMENT_GET_INPUT_BITMASKS, NULL);
 }
@@ -236,6 +251,18 @@ void retro_deinit(void)
 {
     SafeDeleteArray(frame_buffer);
     SafeDelete(core);
+    game_drive_set_vfs_interface(NULL);
+
+    audio_sample_count = 0;
+    current_screen_width = 0;
+    current_screen_height = 0;
+    current_aspect_ratio = 0.0f;
+    aspect_ratio = 0.0f;
+    current_fps = 60.0f;
+    libretro_supports_bitmasks = false;
+
+    reset_controller_devices();
+    clear_input_state();
 }
 
 void retro_reset(void)
@@ -251,25 +278,14 @@ void retro_set_controller_port_device(unsigned port, unsigned device)
 {
     if (port >= MAX_PADS)
     {
-        log_cb(RETRO_LOG_DEBUG, "retro_set_controller_port_device invalid port number: %u\n", port);
+        if (log_cb)
+            log_cb(RETRO_LOG_DEBUG, "retro_set_controller_port_device invalid port number: %u\n", port);
         return;
     }
 
     input_device[port] = device;
 
-    switch ( device )
-    {
-        case RETRO_DEVICE_NONE:
-            log_cb(RETRO_LOG_INFO, "Controller %u: Unplugged\n", port);
-            break;
-        case RETRO_DEVICE_LYNX_PAD:
-        case RETRO_DEVICE_JOYPAD:
-            log_cb(RETRO_LOG_INFO, "Controller %u: Lynx Pad\n", port);
-            break;
-        default:
-            log_cb(RETRO_LOG_DEBUG, "Setting descriptors for unsupported device.\n");
-            break;
-    }
+    apply_controller_device(port, device, true);
 }
 
 void retro_get_system_info(struct retro_system_info *info)
@@ -283,10 +299,12 @@ void retro_get_system_info(struct retro_system_info *info)
 
 void retro_get_system_av_info(struct retro_system_av_info *info)
 {
-    info->geometry.base_width   = 102;
-    info->geometry.base_height  = 102;
-    info->geometry.max_width    = 160;
-    info->geometry.max_height   = 160;
+    core->GetRuntimeInfo(runtime_info);
+
+    info->geometry.base_width   = runtime_info.screen_width;
+    info->geometry.base_height  = runtime_info.screen_height;
+    info->geometry.max_width    = GLYNX_SCREEN_WIDTH;
+    info->geometry.max_height   = GLYNX_SCREEN_WIDTH;
     info->geometry.aspect_ratio = aspect_ratio == 0.0f ? (float)runtime_info.screen_width / (float)runtime_info.screen_height : aspect_ratio;
     info->timing.fps            = current_fps;
     info->timing.sample_rate    = 44100.0;
@@ -321,8 +339,8 @@ void retro_run(void)
         retro_system_av_info info;
         info.geometry.base_width   = runtime_info.screen_width;
         info.geometry.base_height  = runtime_info.screen_height;
-        info.geometry.max_width    = runtime_info.screen_width;
-        info.geometry.max_height   = runtime_info.screen_height;
+        info.geometry.max_width    = GLYNX_SCREEN_WIDTH;
+        info.geometry.max_height   = GLYNX_SCREEN_WIDTH;
         info.geometry.aspect_ratio = (aspect_ratio == 0.0f ? (float)runtime_info.screen_width / (float)runtime_info.screen_height : aspect_ratio);
         info.timing.fps            = current_fps;
         info.timing.sample_rate    = 44100.0;
@@ -350,6 +368,21 @@ bool retro_load_game(const struct retro_game_info *info)
     load_bootroms();
 
     const char* game_path = info->path ? info->path : "";
+    char extended_game_path[4096] = {};
+
+    const struct retro_game_info_ext* game_info_ext = NULL;
+    if (content_info_ext_supported && environ_cb(RETRO_ENVIRONMENT_GET_GAME_INFO_EXT, &game_info_ext) && game_info_ext)
+    {
+        if (game_info_ext->full_path && game_info_ext->full_path[0])
+            game_path = game_info_ext->full_path;
+        else if (game_info_ext->dir && game_info_ext->dir[0] && game_info_ext->name && game_info_ext->name[0])
+        {
+            const char* extension = (game_info_ext->ext && game_info_ext->ext[0]) ? game_info_ext->ext : "lnx";
+            snprintf(extended_game_path, sizeof(extended_game_path), "%s/%s.%s", game_info_ext->dir, game_info_ext->name, extension);
+            game_path = extended_game_path;
+        }
+    }
+
     snprintf(retro_game_path, sizeof(retro_game_path), "%s", game_path);
     log_cb(RETRO_LOG_INFO, "retro_load_game: %s\n", retro_game_path);
 
@@ -357,6 +390,15 @@ bool retro_load_game(const struct retro_game_info *info)
     {
         log_cb(RETRO_LOG_ERROR, "Invalid or corrupted ROM.\n");
         return false;
+    }
+
+    if ((core->GetMedia()->GetEEPROM() & GLYNX_EEPROM_SD) && !core->GetMedia()->GetGameDriveInstance()->IsAvailable())
+    {
+        struct retro_message msg = {};
+        msg.msg = "GameDrive requires frontend VFS v3 and a content directory";
+        msg.frames = 360;
+        environ_cb(RETRO_ENVIRONMENT_SET_MESSAGE, &msg);
+        log_cb(RETRO_LOG_WARN, "%s.\n", msg.msg);
     }
 
     enum retro_pixel_format fmt = RETRO_PIXEL_FORMAT_RGB565;
@@ -392,7 +434,13 @@ bool retro_load_game_special(unsigned game_type, const struct retro_game_info *i
 size_t retro_serialize_size(void)
 {
     size_t size = 0;
-    core->SaveState(NULL, size);
+    if (!core->SaveState(NULL, size))
+        return 0;
+
+    GameDrive* game_drive = core->GetMedia()->GetGameDriveInstance();
+    if (game_drive->IsAvailable())
+        size += game_drive->GetSaveStateSizeReserve();
+
     return size;
 }
 
@@ -475,6 +523,44 @@ static void set_controller_info(void)
     environ_cb(RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS, joypad);
 }
 
+static void clear_input_state(void)
+{
+    for (int i = 0; i < MAX_PADS; i++)
+    {
+        for (int j = 0; j < JOYPAD_BUTTONS; j++)
+        {
+            joypad_current[i][j] = 0;
+            joypad_old[i][j] = 0;
+        }
+    }
+}
+
+static void reset_controller_devices(void)
+{
+    for (int i = 0; i < MAX_PADS; i++)
+        input_device[i] = RETRO_DEVICE_LYNX_PAD;
+}
+
+static void apply_controller_device(unsigned port, unsigned device, bool log_device)
+{
+    if (!log_device || !log_cb)
+        return;
+
+    switch (device)
+    {
+        case RETRO_DEVICE_NONE:
+            log_cb(RETRO_LOG_INFO, "Controller %u: Unplugged\n", port);
+            break;
+        case RETRO_DEVICE_LYNX_PAD:
+        case RETRO_DEVICE_JOYPAD:
+            log_cb(RETRO_LOG_INFO, "Controller %u: Lynx Pad\n", port);
+            break;
+        default:
+            log_cb(RETRO_LOG_DEBUG, "Setting descriptors for unsupported device.\n");
+            break;
+    }
+}
+
 static void update_input(void)
 {
     int16_t joypad_bits[MAX_PADS];
@@ -484,15 +570,23 @@ static void update_input(void)
     if (libretro_supports_bitmasks)
     {
         for (int j = 0; j < MAX_PADS; j++)
-            joypad_bits[j] = input_state_cb(j, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_MASK);
+        {
+            if (IsJoypadDevice(input_device[j]))
+                joypad_bits[j] = input_state_cb(j, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_MASK);
+            else
+                joypad_bits[j] = 0;
+        }
     }
     else
     {
         for (int j = 0; j < MAX_PADS; j++)
         {
             joypad_bits[j] = 0;
-            for (int i = 0; i < (RETRO_DEVICE_ID_JOYPAD_R3+1); i++)
-                joypad_bits[j] |= input_state_cb(j, RETRO_DEVICE_JOYPAD, 0, i) ? (1 << i) : 0;
+            if (IsJoypadDevice(input_device[j]))
+            {
+                for (int i = 0; i < (RETRO_DEVICE_ID_JOYPAD_R3+1); i++)
+                    joypad_bits[j] |= input_state_cb(j, RETRO_DEVICE_JOYPAD, 0, i) ? (1 << i) : 0;
+            }
         }
     }
 
@@ -520,10 +614,53 @@ static void update_input(void)
         }
         else
         {
-            joypad_current[j][0] = (up_pressed && (!down_pressed || joypad_old[j][0])) ? 1 : 0;
-            joypad_current[j][1] = (down_pressed && (!up_pressed || joypad_old[j][1])) ? 1 : 0;
-            joypad_current[j][2] = (left_pressed && (!right_pressed || joypad_old[j][2])) ? 1 : 0;
-            joypad_current[j][3] = (right_pressed && (!left_pressed || joypad_old[j][3])) ? 1 : 0;
+            int up = up_pressed;
+            int down = down_pressed;
+            int left = left_pressed;
+            int right = right_pressed;
+
+            if (up_pressed && down_pressed)
+            {
+                if (joypad_old[j][0])
+                {
+                    up = 1;
+                    down = 0;
+                }
+                else if (joypad_old[j][1])
+                {
+                    up = 0;
+                    down = 1;
+                }
+                else
+                {
+                    up = 1;
+                    down = 0;
+                }
+            }
+
+            if (left_pressed && right_pressed)
+            {
+                if (joypad_old[j][2])
+                {
+                    left = 1;
+                    right = 0;
+                }
+                else if (joypad_old[j][3])
+                {
+                    left = 0;
+                    right = 1;
+                }
+                else
+                {
+                    left = 1;
+                    right = 0;
+                }
+            }
+
+            joypad_current[j][0] = up;
+            joypad_current[j][1] = down;
+            joypad_current[j][2] = left;
+            joypad_current[j][3] = right;
         }
 
         joypad_current[j][4] = IsButtonPressed(joypad_bits[j], RETRO_DEVICE_ID_JOYPAD_A);
@@ -598,6 +735,47 @@ static void check_variables(void)
             console_type = GLYNX_CONSOLE_MODEL_II;
 
         core->GetMedia()->ForceConsoleType(console_type);
+    }
+
+    var.key = "gearlynx_eeprom_type";
+    var.value = NULL;
+
+    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+    {
+        GLYNX_EEPROM eeprom = GLYNX_EEPROM_NONE;
+        bool force = true;
+
+        if (strcmp(var.value, "Auto") == 0)
+            force = false;
+        else if (strcmp(var.value, "None") == 0)
+            eeprom = GLYNX_EEPROM_NONE;
+        else if (strcmp(var.value, "93C46_16bit") == 0)
+            eeprom = GLYNX_EEPROM_93C46;
+        else if (strcmp(var.value, "93C46_8bit") == 0)
+            eeprom = (GLYNX_EEPROM)(GLYNX_EEPROM_93C46 | GLYNX_EEPROM_8BIT);
+        else if (strcmp(var.value, "93C56_16bit") == 0)
+            eeprom = GLYNX_EEPROM_93C56;
+        else if (strcmp(var.value, "93C56_8bit") == 0)
+            eeprom = (GLYNX_EEPROM)(GLYNX_EEPROM_93C56 | GLYNX_EEPROM_8BIT);
+        else if (strcmp(var.value, "93C66_16bit") == 0)
+            eeprom = GLYNX_EEPROM_93C66;
+        else if (strcmp(var.value, "93C66_8bit") == 0)
+            eeprom = (GLYNX_EEPROM)(GLYNX_EEPROM_93C66 | GLYNX_EEPROM_8BIT);
+        else if (strcmp(var.value, "93C76_16bit") == 0)
+            eeprom = GLYNX_EEPROM_93C76;
+        else if (strcmp(var.value, "93C76_8bit") == 0)
+            eeprom = (GLYNX_EEPROM)(GLYNX_EEPROM_93C76 | GLYNX_EEPROM_8BIT);
+        else if (strcmp(var.value, "93C86_16bit") == 0)
+            eeprom = GLYNX_EEPROM_93C86;
+        else if (strcmp(var.value, "93C86_8bit") == 0)
+            eeprom = (GLYNX_EEPROM)(GLYNX_EEPROM_93C86 | GLYNX_EEPROM_8BIT);
+        else
+            force = false;
+
+        if (force)
+            core->GetMedia()->ForceEEPROM(eeprom);
+        else
+            core->GetMedia()->AutoDetectEEPROM();
     }
 
     var.key = "gearlynx_fast_sprite_rendering";

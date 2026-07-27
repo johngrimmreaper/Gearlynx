@@ -69,7 +69,7 @@ static void menu_audio(void);
 static void menu_debug(void);
 static void menu_about(void);
 static void draw_background_color_menu(const char* label, int theme);
-static void draw_mcp_status(void);
+static void draw_server_status(void);
 static void file_dialogs(void);
 static void keyboard_configuration_item(const char* text, SDL_Scancode* key);
 static void gamepad_configuration_item(const char* text, int* button);
@@ -114,7 +114,7 @@ void gui_main_menu(void)
         menu_audio();
         menu_debug();
         menu_about();
-        draw_mcp_status();
+        draw_server_status();
 
         gui_main_menu_height = (int)ImGui::GetWindowSize().y;
 
@@ -151,7 +151,7 @@ static void menu_gearlynx(void)
                         if (emu_is_bios_loaded())
                         {
                             char rom_path[4096];
-                            strcpy(rom_path, config_emulator.recent_roms[i].c_str());
+                            strncpy_fit(rom_path, config_emulator.recent_roms[i].c_str(), sizeof(rom_path));
                             gui_load_rom(rom_path);
                         }
                         else
@@ -198,6 +198,24 @@ static void menu_gearlynx(void)
             ImGui::PushItemWidth(140.0f);
             ImGui::SliderFloat("Speed", &config_rewind.speed, 1.0f, 8.0f, "%.0fx");
             ImGui::PopItemWidth();
+
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Run-Ahead"))
+        {
+            ImGui::PushItemWidth(140.0f);
+            ImGui::Combo("##runahead", &config_emulator.runahead, "Disabled\0" "1 Frame\0" "2 Frames\0" "3 Frames\0\0");
+            ImGui::PopItemWidth();
+
+            if (ImGui::IsItemHovered())
+            {
+                ImGui::BeginTooltip();
+                ImGui::Text("Reduces input lag by speculatively running extra frames each update.");
+                ImGui::Text("Every frame multiplies CPU cost, so use the lowest value that feels right.");
+                ImGui::Text("Ignored while fast-forwarding.");
+                ImGui::EndTooltip();
+            }
 
             ImGui::EndMenu();
         }
@@ -308,6 +326,29 @@ static void menu_emulator(void)
             if (ImGui::Combo("##console_type", &config_emulator.console_type, "Auto\0Lynx I\0Lynx II\0\0"))
             {
                 emu_force_console_type(config_emulator.console_type);
+            }
+            ImGui::PopItemWidth();
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("EEPROM"))
+        {
+            ImGui::PushItemWidth(180.0f);
+            if (ImGui::Combo("##eeprom", &config_emulator.eeprom,
+                "Auto\0None\093C46 - 128 B - 16-bit\093C46 - 128 B - 8-bit\0"
+                "93C56 - 256 B - 16-bit\093C56 - 256 B - 8-bit\0"
+                "93C66 - 512 B - 16-bit\093C66 - 512 B - 8-bit\0"
+                "93C76 - 1 KB - 16-bit\093C76 - 1 KB - 8-bit\0"
+                "93C86 - 2 KB - 16-bit\093C86 - 2 KB - 8-bit\0\0"))
+            {
+                emu_force_eeprom(config_emulator.eeprom);
+            }
+            if (ImGui::IsItemHovered())
+            {
+                ImGui::BeginTooltip();
+                ImGui::Text("It is recommended to leave this option on Auto.");
+                ImGui::Text("Reload the game to apply changes.");
+                ImGui::EndTooltip();
             }
             ImGui::PopItemWidth();
             ImGui::EndMenu();
@@ -472,6 +513,13 @@ static void menu_emulator(void)
 
         ImGui::MenuItem("Start Paused", "", &config_emulator.start_paused);
         ImGui::MenuItem("Pause When Inactive", "", &config_emulator.pause_when_inactive);
+        if (ImGui::MenuItem("Allow Screen Saver", "", &config_emulator.allow_screensaver))
+        {
+            if (config_emulator.allow_screensaver)
+                SDL_EnableScreenSaver();
+            else
+                SDL_DisableScreenSaver();
+        }
 
         ImGui::Separator();
 
@@ -621,15 +669,39 @@ static void menu_video(void)
 
         ImGui::MenuItem("Show FPS", "", &config_video.fps);
 
-        if (ImGui::MenuItem("Vertical Sync", "", &config_video.sync))
+        if (ImGui::BeginMenu("Vertical Sync"))
         {
-            display_set_vsync(config_video.sync);
-
-            if (config_video.sync)
+            ImGui::PushItemWidth(240.0f);
+#if defined(_WIN32)
+            if (ImGui::Combo("##sync_mode", &config_video.sync_mode, "Disabled\0Fixed (60 Hz, 120 Hz, 240 Hz)\0Variable Refresh Rate (VRR)\0\0"))
+#else
+            if (ImGui::Combo("##sync_mode", &config_video.sync_mode, "Disabled\0Fixed (60 Hz, 120 Hz, 240 Hz)\0\0"))
+#endif
             {
-                config_audio.sync = true;
-                config_emulator.ffwd = false;
+                if (config_video.sync_mode != config_VideoSync_Disabled)
+                {
+                    config_audio.sync = true;
+                    config_emulator.ffwd = false;
+                }
+
+                display_use_vsync_if_enabled();
             }
+            ImGui::PopItemWidth();
+
+            if (ImGui::IsItemHovered())
+            {
+                ImGui::BeginTooltip();
+                ImGui::Text("Disabled: do not synchronize presentation to the monitor.");
+                ImGui::Text("Fixed: use normal VSync for 60 Hz, 120 Hz, and 240 Hz displays.");
+#if defined(_WIN32)
+                ImGui::Text("VRR: present at the Lynx frame rate.");
+                ImGui::Text("VRR requires fullscreen, a VRR display, and G-SYNC,");
+                ImGui::Text("FreeSync, or Adaptive Sync enabled in your monitor and GPU driver settings.");
+#endif
+                ImGui::EndTooltip();
+            }
+
+            ImGui::EndMenu();
         }
 
         ImGui::Separator();
@@ -1062,7 +1134,11 @@ static void menu_debug(void)
     {
         gui_in_use = true;
 
-        ImGui::MenuItem("Enable", "", &config_debug.debug);
+        if (ImGui::MenuItem("Enable", "", &config_debug.debug))
+        {
+            emu_set_sprite_bounding_box(config_debug.debug ? config_debug.sprite_bounding_box_mode : GLYNX_SPRITE_BOUNDING_BOX_DISABLED, config_debug.sprite_bounding_box_decay);
+            emu_set_debug_output(config_debug.debug && config_debug.debug_output_enabled);
+        }
 
         ImGui::Separator();
 
@@ -1096,7 +1172,10 @@ static void menu_debug(void)
 
             if (ImGui::MenuItem("Start HTTP Server", "", false, !mcp_running))
             {
-                emu_mcp_set_transport(1, config_emulator.mcp_tcp_port);
+                if (strlen(gui_mcp_http_address) == 0)
+                    strncpy_fit(gui_mcp_http_address, "127.0.0.1", sizeof(gui_mcp_http_address));
+                config_emulator.mcp_http_address = gui_mcp_http_address;
+                emu_mcp_set_transport(1, config_emulator.mcp_tcp_port, config_emulator.mcp_http_address.c_str());
                 emu_mcp_start();
             }
 
@@ -1110,11 +1189,17 @@ static void menu_debug(void)
             if (stdio_running)
                 ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.10f, 1.0f), "STDIO mode active");
             else if (http_running)
-                ImGui::TextColored(ImVec4(0.10f, 0.90f, 0.10f, 1.0f), "Listening on %d", config_emulator.mcp_tcp_port);
+                ImGui::TextColored(ImVec4(0.10f, 0.90f, 0.10f, 1.0f), "Listening on %s:%d", config_emulator.mcp_http_address.c_str(), config_emulator.mcp_tcp_port);
             else
                 ImGui::TextColored(ImVec4(0.98f, 0.15f, 0.45f, 1.0f), "Stopped");
 
             ImGui::Separator();
+
+            ImGui::Text("HTTP Address:");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(120);
+            if (ImGui::InputText("##mcp_address", gui_mcp_http_address, IM_ARRAYSIZE(gui_mcp_http_address), ImGuiInputTextFlags_AutoSelectAll))
+                config_emulator.mcp_http_address = gui_mcp_http_address;
 
             ImGui::Text("HTTP Port:");
             ImGui::SameLine();
@@ -1176,6 +1261,51 @@ static void menu_debug(void)
         ImGui::MenuItem("Show Framebuffers", "", &config_debug.show_frame_buffers, config_debug.debug);
         ImGui::MenuItem("Show LCD / Video DMA", "", &config_debug.show_lcd, config_debug.debug);
 
+        if (ImGui::BeginMenu("Sprite Bounding Box", config_debug.debug))
+        {
+            static const char* k_sprite_bounding_box_modes = "Disabled\0All Sprites\0SPRCOLL Bit 7\0\0";
+            ImGui::PushItemWidth(130.0f);
+            if (ImGui::Combo("##sprite_bbox_mode", &config_debug.sprite_bounding_box_mode, k_sprite_bounding_box_modes))
+                emu_set_sprite_bounding_box(config_debug.debug ? config_debug.sprite_bounding_box_mode : GLYNX_SPRITE_BOUNDING_BOX_DISABLED, config_debug.sprite_bounding_box_decay);
+            bool mode_hovered = ImGui::IsItemHovered();
+            ImGui::PopItemWidth();
+            mode_hovered |= ImGui::IsItemHovered();
+
+            if (mode_hovered)
+            {
+                ImGui::BeginTooltip();
+                ImGui::Text("Disabled: do not draw sprite bounding boxes.");
+                ImGui::Text("All Sprites: draw a box after every rendered sprite.");
+                ImGui::Text("SPRCOLL Bit 7: draw only SCBs with SPRCOLL bit 7 ($80) set.");
+                ImGui::Text("Real Lynx hardware ignores SPRCOLL bit 7.");
+                ImGui::Text("The outline uses the selected color.");
+                ImGui::EndTooltip();
+            }
+
+            static const char* k_color_names = "Magenta\0Cyan\0Red\0Green\0Blue\0Yellow\0White\0Black\0\0";
+            ImGui::PushItemWidth(130.0f);
+            ImGui::Combo("##sprite_bbox_color", &config_debug.sprite_bounding_box_color, k_color_names);
+            ImGui::PopItemWidth();
+
+            if (ImGui::BeginMenu("Decay"))
+            {
+                ImGui::PushItemWidth(140.0f);
+                if (ImGui::SliderInt("##sprite_bbox_decay", &config_debug.sprite_bounding_box_decay, 0, 10, "%d frames", ImGuiSliderFlags_AlwaysClamp))
+                    emu_set_sprite_bounding_box(config_debug.debug ? config_debug.sprite_bounding_box_mode : GLYNX_SPRITE_BOUNDING_BOX_DISABLED, config_debug.sprite_bounding_box_decay);
+                ImGui::PopItemWidth();
+                if (ImGui::IsItemHovered())
+                {
+                    ImGui::BeginTooltip();
+                    ImGui::Text("Number of frames to keep boxes after the frame that generated them.");
+                    ImGui::Text("0 shows only the current frame.");
+                    ImGui::EndTooltip();
+                }
+                ImGui::EndMenu();
+            }
+
+            ImGui::EndMenu();
+        }
+
         ImGui::Separator();
 
         ImGui::MenuItem("Show EEPROM", "", &config_debug.show_eeprom, config_debug.debug);
@@ -1184,6 +1314,16 @@ static void menu_debug(void)
         ImGui::Separator();
 
         ImGui::MenuItem("Show Trace Logger", "", &config_debug.show_trace_logger, config_debug.debug);
+
+        if (ImGui::MenuItem("Debug Output", "", &config_debug.debug_output_enabled))
+            emu_set_debug_output(config_debug.debug && config_debug.debug_output_enabled);
+        if (ImGui::IsItemHovered())
+        {
+            ImGui::BeginTooltip();
+            ImGui::Text("Enable debug output registers ($FDC0-$FDC4).");
+            ImGui::Text("Games can send text to the Trace Logger.");
+            ImGui::EndTooltip();
+        }
 
         ImGui::Separator();
 
@@ -1234,31 +1374,56 @@ static void menu_about(void)
     }
 }
 
-static void draw_mcp_status(void)
+static void draw_server_status(void)
 {
-    if (!emu_mcp_is_running())
+    bool mcp_running = emu_mcp_is_running();
+    bool debug_monitor_running = emu_debug_monitor_is_running();
+
+    if (!mcp_running && !debug_monitor_running)
         return;
 
-    char status[64];
-    ImVec4 color(0.10f, 0.90f, 0.10f, 1.0f);
+    char mcp_status[128];
+    char debug_monitor_status[64];
+    bool show_mcp_status = false;
+    bool show_debug_monitor_status = false;
+    ImVec4 mcp_color(0.10f, 0.90f, 0.10f, 1.0f);
+    ImVec4 debug_monitor_color(0.20f, 0.70f, 1.0f, 1.0f);
 
-    int transport_mode = emu_mcp_get_transport_mode();
-    if (transport_mode == 0)
+    if (mcp_running)
     {
-        snprintf(status, sizeof(status), "MCP: STDIO");
-        color = ImVec4(0.90f, 0.70f, 0.10f, 1.0f);
+        int transport_mode = emu_mcp_get_transport_mode();
+        if (transport_mode == 0)
+        {
+            snprintf(mcp_status, sizeof(mcp_status), "MCP: STDIO");
+            mcp_color = ImVec4(0.90f, 0.70f, 0.10f, 1.0f);
+            show_mcp_status = true;
+        }
+        else if (transport_mode == 1)
+        {
+            snprintf(mcp_status, sizeof(mcp_status), "MCP: HTTP (%s:%d)", config_emulator.mcp_http_address.c_str(), config_emulator.mcp_tcp_port);
+            show_mcp_status = true;
+        }
     }
-    else if (transport_mode == 1)
+
+    if (debug_monitor_running)
     {
-        snprintf(status, sizeof(status), "MCP: HTTP (%d)", config_emulator.mcp_tcp_port);
-    }
-    else
-    {
-        return;
+        snprintf(debug_monitor_status, sizeof(debug_monitor_status), "DEBUG: TCP (%s:%d)", emu_debug_monitor_get_address(), emu_debug_monitor_get_port());
+        show_debug_monitor_status = true;
     }
 
     ImGuiStyle& style = ImGui::GetStyle();
-    float text_width = ImGui::CalcTextSize(status).x;
+    float spacing = style.ItemSpacing.x * 2.0f;
+    float text_width = 0.0f;
+
+    if (show_mcp_status)
+        text_width += ImGui::CalcTextSize(mcp_status).x;
+    if (show_debug_monitor_status)
+    {
+        if (text_width > 0.0f)
+            text_width += spacing;
+        text_width += ImGui::CalcTextSize(debug_monitor_status).x;
+    }
+
     float status_x = ImGui::GetWindowWidth() - text_width - style.ItemSpacing.x - 10.0f;
     float cursor_x = ImGui::GetCursorPosX();
 
@@ -1267,7 +1432,16 @@ static void draw_mcp_status(void)
 
     ImGui::SameLine(status_x);
     ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(color, "%s", status);
+
+    if (show_mcp_status)
+        ImGui::TextColored(mcp_color, "%s", mcp_status);
+
+    if (show_debug_monitor_status)
+    {
+        if (show_mcp_status)
+            ImGui::SameLine(0.0f, spacing);
+        ImGui::TextColored(debug_monitor_color, "%s", debug_monitor_status);
+    }
 }
 
 static void file_dialogs(void)

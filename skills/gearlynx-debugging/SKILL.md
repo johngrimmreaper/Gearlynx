@@ -11,9 +11,10 @@ description: >-
   the user mentions Atari Lynx development, Lynx homebrew testing, or 6502
   debugging with Gearlynx.
 compatibility: >-
-  Requires the Gearlynx MCP server. Before installing or configuring, call
-  debug_get_status to check if the server is already connected. If it responds,
-  the server is ready — skip setup entirely.
+  Requires the Gearlynx MCP server. Direct tool mode is the default. Before
+  installing or configuring, call debug_get_status to check if the server is
+  already connected. If --mcp-router is enabled, use get_tool_info and
+  execute_tool for routed tools.
 metadata:
   author: drhelius
   version: "1.0"
@@ -27,9 +28,9 @@ Debug Atari Lynx games using the Gearlynx emulator as an MCP server. Control exe
 
 ## MCP Server Prerequisite
 
-**IMPORTANT — Check before installing:** Before attempting any installation or configuration, you MUST first verify if the Gearlynx MCP server is already connected in your current session. Call `debug_get_status` — if it returns a valid response, the server is active and ready.
+**IMPORTANT — Check before installing:** Before attempting any installation or configuration, you MUST first verify if the Gearlynx MCP server is already connected in your current session. In the default mode, call `debug_get_status` directly. If Gearlynx was intentionally started with `--mcp-router`, call `get_tool_info` with `{"name":"debug_get_status"}`, then call `execute_tool` with `{"name":"debug_get_status","arguments":{}}`. A valid response from either workflow means the server is active and ready.
 
-Only if the tool is not available or the call fails, you need to help install and configure the Gearlynx MCP server:
+Only if neither workflow is available or the call fails, you need to help install and configure the Gearlynx MCP server:
 
 ### Installing Gearlynx
 
@@ -90,7 +91,7 @@ Atari Lynx hardware documentation is available in the [references/](references/)
 load_media → get_media_info → get_6502_status → get_screenshot
 ```
 
-Start every session by loading the ROM, confirming it loaded correctly, then checking CPU state and taking a screenshot to understand the current game state. If a `.sym`, `.lbl`, or `.noi` file exists alongside the ROM, symbols are loaded automatically.
+Start every session by loading the ROM, confirming it loaded correctly, then checking CPU state and taking a screenshot to understand the current game state. If a `.sym`, `.elf`, `.lbl`, or `.noi` file exists alongside the ROM, symbols are loaded automatically.
 
 Load additional symbols with `load_symbols` or add individual labels with `add_symbol`.
 

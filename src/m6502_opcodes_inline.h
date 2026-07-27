@@ -141,6 +141,20 @@ INLINE void M6502::OPCodes_BIT_Immediate(u16 address)
 INLINE void M6502::OPCodes_BRK()
 {
     u16 pc = m_s.PC.GetValue();
+
+    if (m_debug_brk_enabled && m_memory->Read<true>(pc) == m_debug_brk_value)
+    {
+        m_debug_brk_breakpoint_hit = true;
+        SetBreakpointHitAddress(pc - 1);
+
+        if (!m_debug_brk_trigger_irq)
+        {
+            FetchOperand8();
+            m_s.cycles = 2;
+            return;
+        }
+    }
+
     StackPush16(pc + 1);
     StackPush8(m_s.P.GetValue() | FLAG_BREAK);
     ClearFlag(FLAG_DECIMAL);
@@ -395,7 +409,7 @@ inline void M6502::UnofficialOPCode()
 #if defined(GLYNX_DEBUG)
     u16 opcode_address = m_s.PC.GetValue() - 1;
     u8 opcode = m_memory->Read(opcode_address);
-    Debug("** M6502 --> UNOFFICIAL OP Code (%02X) at $%.4X -- %s", opcode, opcode_address, k_m6502_opcode_names[opcode]);
+    Debug("** M6502 --> UNOFFICIAL OP Code (%02X) at $%.4X -- %s", opcode, opcode_address, k_m6502_opcode_names[opcode].name[m_disassembler_syntax]);
 #endif
 }
 

@@ -30,11 +30,11 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
     <tr>
       <td rowspan="2"><strong>Windows</strong></td>
       <td>Desktop x64</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.13/Gearlynx-1.2.13-desktop-windows-x64.zip">Gearlynx-1.2.13-desktop-windows-x64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.20/Gearlynx-1.2.20-desktop-windows-x64.zip">Gearlynx-1.2.20-desktop-windows-x64.zip</a></td>
     </tr>
     <tr>
       <td>Desktop ARM64</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.13/Gearlynx-1.2.13-desktop-windows-arm64.zip">Gearlynx-1.2.13-desktop-windows-arm64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.20/Gearlynx-1.2.20-desktop-windows-arm64.zip">Gearlynx-1.2.20-desktop-windows-arm64.zip</a></td>
     </tr>
     <tr>
       <td rowspan="3"><strong>macOS</strong></td>
@@ -43,11 +43,11 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
     </tr>
     <tr>
       <td>Desktop Apple Silicon</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.13/Gearlynx-1.2.13-desktop-macos-arm64.zip">Gearlynx-1.2.13-desktop-macos-arm64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.20/Gearlynx-1.2.20-desktop-macos-arm64.zip">Gearlynx-1.2.20-desktop-macos-arm64.zip</a></td>
     </tr>
     <tr>
       <td>Desktop Intel</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.13/Gearlynx-1.2.13-desktop-macos-intel.zip">Gearlynx-1.2.13-desktop-macos-intel.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.20/Gearlynx-1.2.20-desktop-macos-intel.zip">Gearlynx-1.2.20-desktop-macos-intel.zip</a></td>
     </tr>
     <tr>
       <td rowspan="5"><strong>Linux</strong></td>
@@ -60,15 +60,15 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
     </tr>
     <tr>
       <td>Desktop Ubuntu 24.04 x64</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.13/Gearlynx-1.2.13-desktop-ubuntu24.04-x64.zip">Gearlynx-1.2.13-desktop-ubuntu24.04-x64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.20/Gearlynx-1.2.20-desktop-ubuntu24.04-x64.zip">Gearlynx-1.2.20-desktop-ubuntu24.04-x64.zip</a></td>
     </tr>
     <tr>
       <td>Desktop Ubuntu 22.04 x64</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.13/Gearlynx-1.2.13-desktop-ubuntu22.04-x64.zip">Gearlynx-1.2.13-desktop-ubuntu22.04-x64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.20/Gearlynx-1.2.20-desktop-ubuntu22.04-x64.zip">Gearlynx-1.2.20-desktop-ubuntu22.04-x64.zip</a></td>
     </tr>
     <tr>
       <td>Desktop Ubuntu 24.04 ARM64</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.13/Gearlynx-1.2.13-desktop-ubuntu24.04-arm64.zip">Gearlynx-1.2.13-desktop-ubuntu24.04-arm64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.20/Gearlynx-1.2.20-desktop-ubuntu24.04-arm64.zip">Gearlynx-1.2.20-desktop-ubuntu24.04-arm64.zip</a></td>
     </tr>
     <tr>
       <td><strong>MCPB</strong></td>
@@ -90,6 +90,7 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
 
 **Notes:**
 - **Windows**: May need [Visual C++ Redistributable](https://go.microsoft.com/fwlink/?LinkId=746572) and [OpenGL Compatibility Pack](https://apps.microsoft.com/detail/9nqpsl29bfff)
+- **Homebrew**: If Homebrew asks you to trust the third-party tap, run `brew trust --tap drhelius/geardome`
 - **Linux**: May need `libsdl3`
 
 ## Features
@@ -98,16 +99,18 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
 - User selectable Lynx I or Lynx II emulation.
 - Compressed and homebrew ROM support (lnx, lyx, o, and zip).
 - Save states with preview and rewind support.
+- Run-ahead support to reduce input latency.
 - Very accurate audio emulation with configurable low-pass filter (mimics original Lynx audio hardware).
 - VGM recorder.
 - Internal database for automatic ROM detection and hardware selection if `Auto` options are selected.
 - Bank switching (BANK1 + AUDIN) and EEPROM.
 - Save files (EEPROM and NVRAM).
+- GameDrive SD API.
 - Supported platforms (standalone): Windows, Linux, BSD and macOS.
 - Supported platforms (libretro): Windows, Linux, macOS, Raspberry Pi, Android, iOS, tvOS, webOS, PlayStation Vita, PlayStation 3, Nintendo 3DS, Nintendo GameCube, Nintendo Wii, Nintendo WiiU, Nintendo Switch, Emscripten, Classic Mini systems (NES, SNES, C64, ...), OpenDingux, RetroFW and QNX.
 - Full debugger with just-in-time run-ahead disassembler that can handle self-modifying code, CPU and memory breakpoints, code navigation (goto address, JP JR and JSR double clicking), debug symbols, automatic labels, memory editor, memory search, Suzy and Mikey register viewer, audio channels, UART, cartridge and video inspector.
 - MCP server for AI-assisted debugging with GitHub Copilot, Claude, Codex and similar, exposing tools for execution control, memory inspection, hardware status, rewind and more.
-- Windows and Linux *Portable Mode*.
+- Windows, Linux and macOS *Portable Mode*.
 - [Programmable Shader Chain](platforms/shared/desktop/shaders/README.md).
 - ROM loading from the command line by adding the ROM path as an argument.
 - ROM loading using drag & drop.
@@ -118,13 +121,14 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
 ### Basic Usage
 - **BIOS**: Gearlynx requires a BIOS to work. It is possible to load any BIOS but the original with md5 `fcd403db69f54290b51035d82f835e7b` is recommended.
 - **Mouse Cursor**: Automatically hides when hovering over the main output window or when Main Menu is disabled.
-- **Portable Mode**: Create an empty file named `portable.ini` in the same directory as the application binary to enable portable mode.
+- **Portable Mode**: Create an empty file named `portable.ini` in the same directory as the application binary to enable portable mode. On macOS, place the file next to the `.app` bundle.
 
 ### Debugging Features
 - **Docking Windows**: In debug mode, you can dock windows together by pressing SHIFT and dragging a window onto another.
 - **Multi-viewport**: In Windows or macOS, you can enable "multi-viewport" in the debug menu. You must restart the emulator for the change to take effect. Once enabled, you can drag debugger windows outside the main window.
 - **Single Instance**: You can enable "Single Instance" in the `Emulator` menu. When enabled, opening a ROM while another instance is running will send the ROM to the running instance instead of starting a new one.
-- **Debug Symbols**: The emulator automatically tries to load a symbol file when loading a ROM. For example, for `path_to_rom_file.rom` it tries to load `path_to_rom_file.sym`, `path_to_rom_file.lbl` and `path_to_rom_file.noi`. You can also load symbol files using the GUI or the CLI. It supports *cc65* (VICE label file), *lyxass* (EQU) and *mads* (lab and hea) file formats.
+- **Debug Symbols**: The emulator automatically tries to load a symbol file when loading a ROM. For example, for `path_to_rom_file.rom` it tries to load `path_to_rom_file.sym`, `path_to_rom_file.elf`, the loaded-file sidecar `path_to_rom_file.rom.elf`, `path_to_rom_file.lbl` and `path_to_rom_file.noi`. You can also load symbol files using the GUI or the CLI. It supports *cc65* (VICE label file), *lyxass* (EQU), *mads* (lab and hea), *llvm-nm*, *llvm-mos* ELF and *vicelbl* label formats.
+- **Sprite Bounding Box**: Homebrew and debug builds can draw colored ImGui outlines after Suzy finishes rendering sprites. It can draw all sprites or only SCBs with `SPRCOLL` bit 7 (`$80`) set. Real Lynx hardware ignores this bit, but production builds should clear it.
 - **Debug Output**: Homebrew games can send debug text to the Trace Logger window using unused Mikey registers `$FDC0`–`$FDC4`. Enable *Debug Output* in the Trace Logger *Settings* menu and make sure the *Debug Messages* filter is active. See the register protocol below.
 
 | Register | Write |
@@ -148,17 +152,28 @@ Options:
   -w, --windowed           Start in windowed mode with menu visible
       --mcp-stdio          Auto-start MCP server with stdio transport
       --mcp-http           Auto-start MCP server with HTTP transport
+      --mcp-router         Enable compact MCP tool routing
+      --mcp-http-address A HTTP bind address (default: 127.0.0.1)
       --mcp-http-port N    HTTP port for MCP server (default: 7777)
-      --headless           Run without GUI (requires --mcp-stdio or --mcp-http)
+      --debug-monitor      Start debug monitor TCP server (default port: 6502)
+      --debug-monitor-port N Debug monitor port (default: 6502)
+      --headless           Run without GUI (requires --mcp-stdio, --mcp-http, or --debug-monitor)
   -v, --version            Display version information
   -h, --help               Display this help message
 ```
 
 ### MCP Server
 
-Gearlynx includes a [Model Context Protocol](https://modelcontextprotocol.io/introduction) (MCP) server that enables AI-assisted debugging through AI agents like GitHub Copilot, Claude, Codex and similar. The server provides tools for execution control, memory inspection, breakpoints, disassembly, hardware status, rewind and more.
+Gearlynx includes a [Model Context Protocol](https://modelcontextprotocol.io/introduction) (MCP) server that enables AI-assisted debugging through AI agents like GitHub Copilot, Claude, Codex and similar. The server provides tools for execution control, memory inspection, breakpoints, disassembly, hardware status, rewind and more. STDIO and HTTP transports are supported, with STDIO preferred.
 
 For complete setup instructions and tool documentation, see [MCP_README.md](MCP_README.md).
+
+### VS Code Extension
+
+A source-level debugger for VS Code lives in its own repository:
+[BrianPeek/gearlynx-vscode](https://github.com/BrianPeek/gearlynx-vscode). It drives
+Gearlynx over the debug-monitor protocol (`--debug-monitor`). The wire contract is
+documented in [VSCODE_PROTOCOL_README.md](VSCODE_PROTOCOL_README.md).
 
 ### Agent Skills
 
@@ -179,7 +194,7 @@ Gearlynx passes all tests from [Atari Lynx Hardware Test ROMs](https://github.co
 
 ### Windows
 
-- Install Microsoft Visual Studio Community 2022 or later.
+- Install Microsoft Visual Studio Community 2026 or later.
 - Download the latest SDL3 VC development libraries from [SDL3 Releases](https://github.com/libsdl-org/SDL/releases) (the file named `SDL3-devel-x.y.z-VC.zip`).
 - Extract the archive and rename the resulting folder (e.g. `SDL3-x.y.z`) to `SDL3`.
 - Place the `SDL3` folder inside `platforms/windows/dependencies/` so that the include path is `platforms/windows/dependencies/SDL3/include/SDL3/`.

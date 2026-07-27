@@ -36,6 +36,12 @@ INLINE bool GearlynxCore::RunToVBlank(u8* frame_buffer, s16* sample_buffer, int*
         return false;
     }
 
+    if (!m_mikey->IsPoweredOn())
+    {
+        m_mikey->GetLcdScreen()->RenderNoPowerScreen(frame_buffer);
+        return false;
+    }
+
     if (m_paused || !m_media->IsReady())
         return false;
 
@@ -55,6 +61,9 @@ template<bool debugger>
 bool GearlynxCore::RunToVBlankTemplate(u8* frame_buffer, s16* sample_buffer, int* sample_count, GLYNX_Debug_Run* debug)
 {
     m_mikey->GetLcdScreen()->SetBuffer(frame_buffer);
+#if !defined(GLYNX_DISABLE_DISASSEMBLER)
+    m_suzy->BeginSpriteBoundingBoxFrame();
+#endif
 
     if (debugger)
     {
@@ -66,6 +75,10 @@ bool GearlynxCore::RunToVBlankTemplate(u8* frame_buffer, s16* sample_buffer, int
             m_m6502->EnableBreakpoints(debug->stop_on_breakpoint, debug->stop_on_irq);
             m_m6502->SetSkipIRQOnStep(debug->skip_interrupts_on_step);
         }
+
+        m_m6502->SetDebugBRK(debug_enable && debug->stop_on_brk,
+            debug_enable ? debug->brk_value : 0,
+            debug_enable && debug->brk_trigger_irq);
 
         bool stop = false;
         u32 failsafe_cycle_count = 0;
@@ -120,6 +133,9 @@ bool GearlynxCore::RunToVBlankTemplate(u8* frame_buffer, s16* sample_buffer, int
         }
         while (!stop);
 
+#if !defined(GLYNX_DISABLE_DISASSEMBLER)
+        m_suzy->EndSpriteBoundingBoxFrame();
+#endif
         m_mikey->GetLcdScreen()->EndFrame(m_media->GetRotation());
         m_audio->EndFrame(sample_buffer, sample_count);
 
@@ -163,6 +179,9 @@ bool GearlynxCore::RunToVBlankTemplate(u8* frame_buffer, s16* sample_buffer, int
         }
         while (!stop);
 
+#if !defined(GLYNX_DISABLE_DISASSEMBLER)
+        m_suzy->EndSpriteBoundingBoxFrame();
+#endif
         m_mikey->GetLcdScreen()->EndFrame(m_media->GetRotation());
         m_audio->EndFrame(sample_buffer, sample_count);
 

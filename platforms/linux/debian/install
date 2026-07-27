@@ -1,2 +1,3 @@
 platforms/linux/gearlynx usr/lib/gearlynx/
 debian/gearlynx.desktop usr/share/applications/
+debian/gearlynx.xml usr/share/mime/packages/

@@ -1,8 +1,15 @@
+gearlynx (1.2.20-1~ppa1) UNRELEASED; urgency=medium
+
+  * New upstream release 1.2.20.
+  * Build against libsdl3-dev 3.4.10+ds-1.
+  * Install MIME definitions for Atari Lynx ROM files.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Mon, 27 Jul 2026 19:50:44 +0000
+
 gearlynx (1.2.13-1~ppa1) UNRELEASED; urgency=medium
 
   * Initial PPA build.
   * Add Debian packaging for Gearlynx 1.2.13.
-  * Built against libsdl3-dev from the johngrimmreaper Ubuntu PPA https://launchpad.net/~johngrimmreaper
   * Install the binary under /usr/games.
   * Add a desktop entry and application icon.
   * Add a minimal manual page.

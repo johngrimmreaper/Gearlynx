@@ -1,18 +1,316 @@
-gearlynx (1.2.20-1~ppa1) UNRELEASED; urgency=medium
+gearlynx (1.2.20-1) UNRELEASED; urgency=medium
 
-  * New upstream release 1.2.20.
-  * Build against libsdl3-dev 3.4.10+ds-1.
-  * Install MIME definitions for Atari Lynx ROM files.
+  * GameDrive SD card support (SD access API)
+  * Added option to force EEPROM type
+  * Hardened MCP server protocol compliance with version negotiation
+    and validation
+  * Added MCP tool behavior annotations
+  * Improved MCP HTTP transport reliability and error handling
+  * Many bug fixes and improvements
 
- -- Reaper <JohnGrimmReaper@disroot.org>  Mon, 27 Jul 2026 19:50:44 +0000
+ -- Reaper <JohnGrimmReaper@disroot.org>  Fri, 24 Jul 2026 11:35:33 +0000
 
-gearlynx (1.2.13-1~ppa1) UNRELEASED; urgency=medium
+gearlynx (1.2.19-1) UNRELEASED; urgency=medium
 
-  * Initial PPA build.
-  * Add Debian packaging for Gearlynx 1.2.13.
-  * Install the binary under /usr/games.
-  * Add a desktop entry and application icon.
-  * Add a minimal manual page.
-  * Clean up packaging metadata for lintian.
+  * Improved MCP tool discoverability and usability for agents
+  * Configurable screen saver behavior
+  * Many bug fixes and improvements
 
- -- Nacho Sanchez <863613+drhelius@users.noreply.github.com>  Tue, 25 Mar 2026 00:00:00 +0000
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sat, 18 Jul 2026 00:23:57 +0000
+
+gearlynx (1.2.18-1) UNRELEASED; urgency=medium
+
+  * Associate ROM extensions to macOS and Linux desktop apps
+  * Updated Game Controller DB
+  * Many bug fixes and improvements
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Mon, 29 Jun 2026 18:30:06 +0000
+
+gearlynx (1.2.17-1) UNRELEASED; urgency=medium
+
+  * Release 1.2.17.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Mon, 29 Jun 2026 17:15:11 +0000
+
+gearlynx (1.2.16-1) UNRELEASED; urgency=medium
+
+  * Run ahead support for reduced input latency
+  * Improved support for VS Code debugging
+  * Many bug fixes and improvements
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sun, 28 Jun 2026 20:35:11 +0200
+
+gearlynx (1.2.15-1) UNRELEASED; urgency=medium
+
+  * Variable Refresh Rate ready
+  * Reduced token usage in MCP server with optional tool router
+  * Added cc65, lyxass and mads syntaxes in disassembler
+  * Source-level debugging in VS Code by BrianPeek
+  * Sprite bounding box overlays in the debugger
+  * Added LNX2 ROM format support
+  * Agentic Workflows
+  * Many bug fixes and improvements
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Thu, 25 Jun 2026 21:53:12 +0200
+
+gearlynx (1.2.14-1) UNRELEASED; urgency=medium
+
+  * Improved MCP server
+  * Improved debugger
+  * Updated Game Controller DB
+  * Many bug fixes and improvements
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sat, 20 Jun 2026 01:29:09 +0200
+
+gearlynx (1.2.13-1) UNRELEASED; urgency=medium
+
+  * Improved accuracy
+  * Optional Light or Dark theme
+  * Many bug fixes and improvements
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sun, 31 May 2026 22:19:51 +0200
+
+gearlynx (1.2.12-1) UNRELEASED; urgency=medium
+
+  * Programmable shaders, with built in shaders or custom: LCD, ghosting,
+    grid, blur...
+  * Many bug fixes and improvements
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Tue, 19 May 2026 22:19:48 +0200
+
+gearlynx (1.2.11-1) UNRELEASED; urgency=medium
+
+  * Improved MCP server
+  * New icon for Windows app
+  * Many bug fixes and improvements
+  * @alexthissen made their first contribution
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sat, 16 May 2026 00:58:21 +0200
+
+gearlynx (1.2.10-1) UNRELEASED; urgency=medium
+
+  * Improved accuracy
+  * Very accurate FSM based Suzy renderer
+  * Improved MCP server
+  * Bug fixes
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Fri, 1 May 2026 01:14:47 +0200
+
+gearlynx (1.2.9-1) UNRELEASED; urgency=medium
+
+  * Added rewind support
+  * Improved MCP server + skill
+  * In-game debug logging using unused registers
+  * RPM repo (experimental)
+  * Updated game controller database
+  * Many bug fixes and improvements
+  * @BrianPeek made their first contribution
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Mon, 27 Apr 2026 22:36:40 +0200
+
+gearlynx (1.2.8-1) UNRELEASED; urgency=medium
+
+  * Release 1.2.8.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Mon, 27 Apr 2026 22:26:14 +0200
+
+gearlynx (1.2.7-1) UNRELEASED; urgency=medium
+
+  * Release 1.2.7.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Mon, 27 Apr 2026 21:12:20 +0200
+
+gearlynx (1.2.6-1) UNRELEASED; urgency=medium
+
+  * [libretro] Added webOS and Linux aarch64 support
+  * Many bug fixes and improvements
+  * @cscd98 made their first contribution
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sun, 5 Apr 2026 12:47:46 +0200
+
+gearlynx (1.2.5-1) UNRELEASED; urgency=medium
+
+  * Improved MCP server + skill with headless mode
+  * Updated game controller database
+  * Bug fixes and improvements
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Mon, 30 Mar 2026 15:32:39 +0200
+
+gearlynx (1.2.4-1) UNRELEASED; urgency=medium
+
+  * [debugger] Improve trace logger
+  * [debugger] Improve call stack
+  * [debugger] Improve auto symbol performance
+  * Add PPA repo
+  * Many bug fixes and improvements
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Wed, 25 Mar 2026 18:48:28 +0100
+
+gearlynx (1.2.3-1) UNRELEASED; urgency=medium
+
+  * Release 1.2.3.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Wed, 25 Mar 2026 18:17:59 +0100
+
+gearlynx (1.2.2-1) UNRELEASED; urgency=medium
+
+  * [debugger] Added SCB viewer
+  * [debugger] Added linear search to memory editor
+  * Many bug fixes and improvements
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sun, 15 Mar 2026 12:07:34 +0100
+
+gearlynx (1.2.1-1) UNRELEASED; urgency=medium
+
+  * Updated game controller database
+  * [libretro] Migrated to core options v2 with descriptions
+  * Many bug fixes and improvements
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sun, 8 Mar 2026 10:53:56 +0100
+
+gearlynx (1.2.0-1) UNRELEASED; urgency=medium
+
+  * Desktop app migrated to SDL3 + OGL3
+  * Improved audio latency with configurable settings
+  * Improved sprite performance
+  * New option to load default settings
+  * Many debugger improvements
+  * Bug fixes
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sat, 14 Feb 2026 14:56:35 +0100
+
+gearlynx (1.1.4-1) UNRELEASED; urgency=medium
+
+  * Debugger improvements
+  * Bug fixes
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sun, 8 Feb 2026 21:59:56 +0100
+
+gearlynx (1.1.3-1) UNRELEASED; urgency=medium
+
+  * Improved accuracy
+  * Debugger improvements
+  * Homebrew tap for macOS
+  * Linux ARM64 binaries
+  * Many bug fixes
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Fri, 6 Feb 2026 13:48:21 +0100
+
+gearlynx (1.1.2-1) UNRELEASED; urgency=medium
+
+  * Release 1.1.2.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Fri, 6 Feb 2026 13:25:06 +0100
+
+gearlynx (1.1.1-1) UNRELEASED; urgency=medium
+
+  * Improved MCP tools
+  * Improved accuracy
+  * Improved homebrew support
+  * Single instance mode
+  * Improved vsync for 120Hz and 240Hz monitors
+  * Debugger:
+  * Disassembler run-ahead
+  * Editable registers
+  * Independent output scaling
+  * Quality of life improvements
+  * Many bug fixes
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Mon, 2 Feb 2026 22:34:30 +0100
+
+gearlynx (1.1.0-1) UNRELEASED; urgency=medium
+
+  * Release 1.1.0.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Mon, 2 Feb 2026 20:30:52 +0100
+
+gearlynx (1.0.0-1) UNRELEASED; urgency=medium
+
+  * First stable release!!
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sat, 24 Jan 2026 02:34:45 +0100
+
+gearlynx (0.0.12-1) UNRELEASED; urgency=medium
+
+  * This is the latest pre-release before final release.
+  * There may be bugs and unfinished features.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Tue, 20 Jan 2026 20:31:52 +0100
+
+gearlynx (0.0.11-1) UNRELEASED; urgency=medium
+
+  * This is a pre-release.
+  * There may be bugs and unfinished features.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Mon, 8 Dec 2025 18:53:46 +0100
+
+gearlynx (0.0.10-1) UNRELEASED; urgency=medium
+
+  * This is a pre-release.
+  * There may be bugs and unfinished features.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Fri, 31 Oct 2025 19:39:16 +0100
+
+gearlynx (0.0.9-1) UNRELEASED; urgency=medium
+
+  * This is a pre-release.
+  * There may be bugs and unfinished features.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Tue, 14 Oct 2025 23:35:49 +0200
+
+gearlynx (0.0.8-1) UNRELEASED; urgency=medium
+
+  * Release 0.0.8.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Mon, 13 Oct 2025 22:48:26 +0200
+
+gearlynx (0.0.7-1) UNRELEASED; urgency=medium
+
+  * This is a pre-release.
+  * There may be bugs and unfinished features.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Tue, 7 Oct 2025 23:29:29 +0200
+
+gearlynx (0.0.6-1) UNRELEASED; urgency=medium
+
+  * Release 0.0.6.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sun, 5 Oct 2025 23:36:34 +0200
+
+gearlynx (0.0.5-1) UNRELEASED; urgency=medium
+
+  * This is a pre-release.
+  * There may be bugs and unfinished features.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Thu, 2 Oct 2025 23:49:54 +0200
+
+gearlynx (0.0.4-1) UNRELEASED; urgency=medium
+
+  * This is a pre-release.
+  * There may be bugs and unfinished features.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Tue, 30 Sep 2025 23:49:31 +0200
+
+gearlynx (0.0.3-1) UNRELEASED; urgency=medium
+
+  * Release 0.0.3.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Mon, 29 Sep 2025 17:27:48 +0200
+
+gearlynx (0.0.2-1) UNRELEASED; urgency=medium
+
+  * Release 0.0.2.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Fri, 12 Sep 2025 11:20:43 +0200
+
+gearlynx (0.0.1-1) UNRELEASED; urgency=medium
+
+  * Release 0.0.1.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Mon, 1 Sep 2025 01:11:50 +0200
+
+gearlynx (0.0.0-1) UNRELEASED; urgency=medium
+
+  * Release 0.0.0.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Tue, 19 Aug 2025 10:16:13 +0200

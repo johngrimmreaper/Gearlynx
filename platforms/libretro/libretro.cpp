@@ -26,7 +26,8 @@
 #include "libretro.h"
 #include "gearlynx.h"
 #include "game_drive.h"
-#include "game_drive_filesystem_libretro.h"
+#include "el_cheapo_sd.h"
+#include "sd_card_filesystem_libretro.h"
 #include "libretro_core_options.h"
 
 #ifdef _WIN32
@@ -88,6 +89,7 @@ static GLYNX_Keys keymap[] = {
 
 static GearlynxCore* core;
 static u8* frame_buffer;
+static const retro_vfs_interface* vfs_interface = NULL;
 
 static void set_controller_info(void);
 static void clear_input_state(void);
@@ -115,11 +117,51 @@ static bool IsJoypadDevice(unsigned device)
     return ((device == RETRO_DEVICE_JOYPAD) || (device == RETRO_DEVICE_LYNX_PAD));
 }
 
+static GLYNX_Bios_State load_bios_file(const char* path)
+{
+    if (!vfs_interface || !vfs_interface->open || !vfs_interface->close ||
+        !vfs_interface->size || !vfs_interface->read)
+        return core->LoadBios(path);
+
+    core->UnloadBios();
+
+    retro_vfs_file_handle* file = vfs_interface->open(path, RETRO_VFS_FILE_ACCESS_READ,
+        RETRO_VFS_FILE_ACCESS_HINT_NONE);
+    if (!file)
+        return BIOS_LOAD_FILE_ERROR;
+
+    s64 size = (s64)vfs_interface->size(file);
+    if (size != GLYNX_BIOS_SIZE)
+    {
+        vfs_interface->close(file);
+        return BIOS_LOAD_INVALID_SIZE;
+    }
+
+    u8 bios[GLYNX_BIOS_SIZE];
+    s64 total = 0;
+
+    while (total < size)
+    {
+        s64 read = (s64)vfs_interface->read(file, bios + total, size - total);
+        if (read <= 0)
+            break;
+
+        total += read;
+    }
+
+    vfs_interface->close(file);
+
+    if (total != size)
+        return BIOS_LOAD_FILE_ERROR;
+
+    return core->LoadBiosFromBuffer(bios, (int)size);
+}
+
 static void load_bootroms(void)
 {
     char bios_path[4113];
     snprintf(bios_path, 4113, "%s%clynxboot.img", retro_system_directory, slash);
-    GLYNX_Bios_State result = core->LoadBios(bios_path);
+    GLYNX_Bios_State result = load_bios_file(bios_path);
 
     switch (result)
     {
@@ -228,9 +270,15 @@ void retro_init(void)
     vfs_interface_info.iface = NULL;
 
     if (environ_cb(RETRO_ENVIRONMENT_GET_VFS_INTERFACE, &vfs_interface_info) && vfs_interface_info.iface)
-        game_drive_set_vfs_interface(vfs_interface_info.iface);
+    {
+        vfs_interface = vfs_interface_info.iface;
+        sd_card_set_vfs_interface(vfs_interface);
+    }
     else
-        game_drive_set_vfs_interface(NULL);
+    {
+        vfs_interface = NULL;
+        sd_card_set_vfs_interface(NULL);
+    }
 
     core = new GearlynxCore();
 
@@ -251,7 +299,8 @@ void retro_deinit(void)
 {
     SafeDeleteArray(frame_buffer);
     SafeDelete(core);
-    game_drive_set_vfs_interface(NULL);
+    vfs_interface = NULL;
+    sd_card_set_vfs_interface(NULL);
 
     audio_sample_count = 0;
     current_screen_width = 0;
@@ -362,8 +411,60 @@ void retro_run(void)
         audio_batch_cb(audio_buf, audio_sample_count / 2);
 }
 
+static bool load_rom(const struct retro_game_info* info, const char* path)
+{
+    if (!info)
+        return false;
+
+    if (IsValidPointer(info->data) && (info->size > 0))
+        return core->LoadROMFromBuffer(reinterpret_cast<const u8*>(info->data), info->size, path);
+
+    if (!path || !path[0])
+        return false;
+
+    if (!vfs_interface)
+        return core->LoadROM(path);
+
+    if (!vfs_interface->open || !vfs_interface->close || !vfs_interface->size || !vfs_interface->read)
+        return false;
+
+    retro_vfs_file_handle* file = vfs_interface->open(path, RETRO_VFS_FILE_ACCESS_READ,
+        RETRO_VFS_FILE_ACCESS_HINT_NONE);
+    if (!file)
+        return false;
+
+    s64 size = (s64)vfs_interface->size(file);
+    if ((size <= 0) || (size > 0x7FFFFFFF))
+    {
+        vfs_interface->close(file);
+        return false;
+    }
+
+    u8* buffer = new u8[(int)size];
+    s64 total = 0;
+
+    while (total < size)
+    {
+        s64 read = (s64)vfs_interface->read(file, buffer + total, size - total);
+        if (read <= 0)
+            break;
+
+        total += read;
+    }
+
+    bool loaded = vfs_interface->close(file) == 0 && total == size;
+    if (loaded)
+        loaded = core->LoadROMFromBuffer(buffer, (int)size, path);
+
+    SafeDeleteArray(buffer);
+    return loaded;
+}
+
 bool retro_load_game(const struct retro_game_info *info)
 {
+    if (!info)
+        return false;
+
     check_variables();
     load_bootroms();
 
@@ -386,16 +487,21 @@ bool retro_load_game(const struct retro_game_info *info)
     snprintf(retro_game_path, sizeof(retro_game_path), "%s", game_path);
     log_cb(RETRO_LOG_INFO, "retro_load_game: %s\n", retro_game_path);
 
-    if (!core->LoadROMFromBuffer(reinterpret_cast<const u8*>(info->data), info->size, retro_game_path))
+    if (!load_rom(info, retro_game_path))
     {
         log_cb(RETRO_LOG_ERROR, "Invalid or corrupted ROM.\n");
         return false;
     }
 
-    if ((core->GetMedia()->GetEEPROM() & GLYNX_EEPROM_SD) && !core->GetMedia()->GetGameDriveInstance()->IsAvailable())
+    GLYNX_Cartridge_Hardware cartridge_hardware = core->GetMedia()->GetCartridgeHardware();
+    bool sd_unavailable =
+        (cartridge_hardware == GLYNX_CARTRIDGE_HARDWARE_GAME_DRIVE && !core->GetMedia()->GetGameDriveInstance()->IsAvailable()) ||
+        (cartridge_hardware == GLYNX_CARTRIDGE_HARDWARE_EL_CHEAPO_SD && !core->GetMedia()->GetElCheapoSDInstance()->IsAvailable());
+
+    if (sd_unavailable)
     {
         struct retro_message msg = {};
-        msg.msg = "GameDrive requires frontend VFS v3 and a content directory";
+        msg.msg = "SD cartridge requires frontend VFS v3 and a content directory";
         msg.frames = 360;
         environ_cb(RETRO_ENVIRONMENT_SET_MESSAGE, &msg);
         log_cb(RETRO_LOG_WARN, "%s.\n", msg.msg);
@@ -434,12 +540,8 @@ bool retro_load_game_special(unsigned game_type, const struct retro_game_info *i
 size_t retro_serialize_size(void)
 {
     size_t size = 0;
-    if (!core->SaveState(NULL, size))
+    if (!core->GetMaxSaveStateSize(size))
         return 0;
-
-    GameDrive* game_drive = core->GetMedia()->GetGameDriveInstance();
-    if (game_drive->IsAvailable())
-        size += game_drive->GetSaveStateSizeReserve();
 
     return size;
 }
@@ -716,6 +818,8 @@ static void check_variables(void)
             rotation = GLYNX_ROTATION_RIGHT;
         else if (strcmp(var.value, "Disabled") == 0)
             rotation = GLYNX_ROTATION_DISABLED;
+        else if (strcmp(var.value, "180") == 0)
+            rotation = GLYNX_ROTATION_180;
 
         core->GetMedia()->ForceRotation(rotation);
     }
@@ -778,11 +882,28 @@ static void check_variables(void)
             core->GetMedia()->AutoDetectEEPROM();
     }
 
-    var.key = "gearlynx_fast_sprite_rendering";
+    var.key = "gearlynx_cartridge_hardware";
     var.value = NULL;
 
     if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
-        core->GetSuzy()->SetFastSpriteRendering(strcmp(var.value, "Enabled") == 0);
+    {
+        if (strcmp(var.value, "Standard") == 0)
+            core->GetMedia()->ForceCartridgeHardware(GLYNX_CARTRIDGE_HARDWARE_STANDARD);
+        else if (strcmp(var.value, "GameDrive") == 0)
+            core->GetMedia()->ForceCartridgeHardware(GLYNX_CARTRIDGE_HARDWARE_GAME_DRIVE);
+        else if (strcmp(var.value, "ElCheapoSD") == 0)
+            core->GetMedia()->ForceCartridgeHardware(GLYNX_CARTRIDGE_HARDWARE_EL_CHEAPO_SD);
+        else
+            core->GetMedia()->AutoDetectCartridgeHardware();
+    }
+
+    var.key = "gearlynx_legacy_sprite_renderer";
+    var.value = NULL;
+
+    bool fast_sprite_rendering = false;
+    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+        fast_sprite_rendering = strcmp(var.value, "Enabled") == 0;
+    core->GetSuzy()->SetFastSpriteRendering(fast_sprite_rendering);
 
     var.key = "gearlynx_lowpass_filter";
     var.value = NULL;

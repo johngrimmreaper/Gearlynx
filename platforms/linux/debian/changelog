@@ -1,3 +1,27 @@
+gearlynx (1.2.22-1) UNRELEASED; urgency=medium
+
+  * Improved Suzy and CPU sleep timing accuracy
+  * Added command-line option for portable mode
+  * Improved MCP Server implementation
+  * libretro VFS support
+  * Improved compatibility in Dev Containers
+  * Updated Game Controller DB
+  * Many bug fixes and improvements
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Fri, 7 Aug 2026 13:04:56 +0000
+
+gearlynx (1.2.21-1) UNRELEASED; urgency=medium
+
+  * Improved Suzy sprite rendering timing accuracy
+  * Improved CPU and hardware timing accuracy
+  * GameDrive cartridge (SD card access API)
+  * ElCheapoSD cartridge (SD card access API)
+  * libretro VFS support for BIOS loading and path-only content
+  * Updated Game Controller DB
+  * Many bug fixes and improvements
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sat, 1 Aug 2026 03:11:51 +0200
+
 gearlynx (1.2.20-1) UNRELEASED; urgency=medium
 
   * GameDrive SD card support (SD access API)

@@ -30,14 +30,15 @@
 #include "lcd_screen.h"
 #include "trace_logger.h"
 #include "eeprom.h"
+#include "el_cheapo_sd.h"
 #include "memory.h"
 
 INLINE bool Mikey::Clock(u32 cycles)
 {
-    UpdateVideo(cycles);
-    UpdateAudio(cycles);
-    UpdateTimers(cycles);
-    UpdateIRQs();
+    if (cycles > m_cpu_read_cycles)
+        Advance(cycles - m_cpu_read_cycles);
+
+    m_cpu_read_cycles = 0;
 
     bool ret = m_state.frame_ready;
 
@@ -62,7 +63,11 @@ INLINE u8 Mikey::Read(u16 address)
         return ReadTimer<debug>(address);
     else if (address < 0xFD40)
         return ReadAudio<debug>(address);
-    else if (address <= 0xFD50)
+
+    if (!debug)
+        SynchronizeCPURead();
+
+    if (address <= 0xFD50)
         return ReadAudioExtra(address);
     else if (address >= 0xFDA0 && address < 0xFDC0)
         return ReadColor(address);
@@ -130,8 +135,11 @@ INLINE u8 Mikey::Read(u16 address)
             // EEPROM can override this when actively sending data
             if (IS_SET_BIT(m_state.IODIR, 4))
                 ret |= IS_SET_BIT(m_state.IODAT, 4) ? 0x10 : 0x00;
-            else if (m_media->GetGameDriveInstance()->IsAvailable())
+            else if (m_media->GetGameDriveInstance()->IsAvailable() &&
+                !m_media->GetEEPROMInstance()->IsSelected())
                 ret |= m_media->GetGameDriveInstance()->HasOutput() ? 0x10 : 0x00;
+            else if (m_media->GetElCheapoSDInstance()->IsSelected())
+                ret |= m_media->GetElCheapoSDInstance()->OutputBit() ? 0x10 : 0x00;
             else if (m_media->GetEEPROMInstance()->IsAvailable())
             {
                 if (!debug)
@@ -293,6 +301,8 @@ INLINE void Mikey::Write(u16 address, u8 value)
 
             if (m_media->GetEEPROMInstance()->IsAvailable())
                 m_media->GetEEPROMInstance()->ProcessIO(m_state.IODIR, m_state.IODAT);
+            else if (m_media->GetElCheapoSDInstance()->IsAvailable())
+                m_media->GetElCheapoSDInstance()->ProcessIO(m_state.IODIR, m_state.IODAT);
 
             break;
         case MIKEY_IODAT:         // 0xFD8B
@@ -305,6 +315,8 @@ INLINE void Mikey::Write(u16 address, u8 value)
 
             if (m_media->GetEEPROMInstance()->IsAvailable())
                 m_media->GetEEPROMInstance()->ProcessIO(m_state.IODIR, m_state.IODAT);
+            else if (m_media->GetElCheapoSDInstance()->IsAvailable())
+                m_media->GetElCheapoSDInstance()->ProcessIO(m_state.IODIR, m_state.IODAT);
 
             break;
         case MIKEY_SERCTL:        // 0xFD8C
@@ -382,10 +394,12 @@ INLINE void Mikey::Write(u16 address, u8 value)
         case MIKEY_SDONEACK:      // 0xFD90
             DebugMikey("Setting SDONEACK to %02X (was %02X)", value, m_state.SDONEACK);
             m_state.SDONEACK = value;
+            m_state.suzy_done_pending = false;
             break;
         case MIKEY_CPUSLEEP:      // 0xFD91
             DebugMikey("Setting CPUSLEEP to %02X (was %02X)", value, m_state.CPUSLEEP);
-            if ((value == 0) && m_suzy->IsBlitterBusy())
+            if ((value == 0) && m_suzy->IsBlitterBusy() && m_suzy->IsBusEnabled() &&
+                !m_state.suzy_done_pending && ((m_state.irq_pending & m_state.irq_mask) == 0))
                 m_m6502->Halt(true);
             m_state.CPUSLEEP = value;
             break;
@@ -515,6 +529,7 @@ inline u8 Mikey::ReadTimer(u16 address)
     if (!debug)
     {
         m_bus->InjectCycles(k_bus_cycles_timer);
+        SynchronizeCPURead();
     }
 
     int reg = address & 3;
@@ -635,6 +650,7 @@ inline u8 Mikey::ReadAudio(u16 address)
     if (!debug)
     {
         m_bus->InjectCycles(k_bus_cycles_audio);
+        SynchronizeCPURead();
     }
 
     int reg = address & 7;
@@ -823,6 +839,26 @@ inline void Mikey::WriteAudioExtra(u16 address, u8 value)
     default:
         DebugMikey("Audio Extra WRITE called with unknown address: %04X, value: %02X", address, value);
         break;
+    }
+}
+
+INLINE void Mikey::Advance(u32 cycles)
+{
+    UpdateVideo(cycles);
+    UpdateAudio(cycles);
+    UpdateTimers(cycles);
+    UpdateIRQs();
+}
+
+INLINE void Mikey::SynchronizeCPURead()
+{
+    u32 cycles = m_m6502->GetInstructionTicks() + m_bus->GetCycles();
+
+    while (cycles > m_cpu_read_cycles)
+    {
+        Advance(cycles - m_cpu_read_cycles);
+        m_cpu_read_cycles = cycles;
+        cycles = m_m6502->GetInstructionTicks() + m_bus->GetCycles();
     }
 }
 
@@ -1135,6 +1171,12 @@ INLINE void Mikey::UpdateIRQs()
         m_m6502->Halt(false);
 }
 
+INLINE void Mikey::SetSuzyDone()
+{
+    m_state.suzy_done_pending = true;
+    m_m6502->Halt(false);
+}
+
 INLINE void Mikey::UartRelevelIRQ()
 {
     bool tx_level = (m_state.uart.tx_int_en && m_state.uart.tx_ready);
@@ -1349,7 +1391,9 @@ INLINE void Mikey::UpdateVideo(u32 cycles)
     while (m_state.refresh_cycle_counter >= k_mikey_refresh_period_cycles)
     {
         m_state.refresh_cycle_counter -= k_mikey_refresh_period_cycles;
-        m_bus->InjectCycles(k_mikey_refresh_inject_cycles);
+        // Coalesce refresh with enabled LCD transfers on visible lines.
+        if (IS_NOT_SET_BIT(m_state.DISPCTL, 0) || m_lcd_screen->GetState()->in_vblank)
+            m_bus->InjectCycles(k_mikey_refresh_inject_cycles);
     }
 }
 

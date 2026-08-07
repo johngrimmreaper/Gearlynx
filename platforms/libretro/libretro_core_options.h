@@ -103,10 +103,26 @@ struct retro_core_option_v2_definition option_defs_us[] = {
         "Auto"
     },
     {
-        "gearlynx_fast_sprite_rendering",
-        "Fast Sprite Rendering",
+        "gearlynx_cartridge_hardware",
+        "Cartridge Hardware (restart)",
+        "Cartridge Hardware",
+        "Override special cartridge hardware. 'Auto' uses the cartridge header or game database. Restart or reload content to apply changes.",
         NULL,
-        "Use a simpler Suzy sprite renderer. This is faster but it is less accurate for mid-render interrupt effects used on some demos.",
+        "system",
+        {
+            { "Auto",        NULL },
+            { "Standard",    NULL },
+            { "GameDrive",   NULL },
+            { "ElCheapoSD",  NULL },
+            { NULL, NULL },
+        },
+        "Auto"
+    },
+    {
+        "gearlynx_legacy_sprite_renderer",
+        "Legacy Sprite Renderer",
+        NULL,
+        "Use a simpler Suzy sprite renderer. This is faster but it is less accurate for mid-render interrupt effects used on some demos. NOT RECOMMENDED.",
         NULL,
         "system",
         {
@@ -139,7 +155,7 @@ struct retro_core_option_v2_definition option_defs_us[] = {
         "gearlynx_rotation",
         "Screen Rotation",
         NULL,
-        "Rotates the screen display. Many Lynx games were designed to be played with the console held vertically. 'Auto' automatically rotates based on the game. 'Left' rotates the screen 90 degrees counter-clockwise. 'Right' rotates the screen 90 degrees clockwise. 'Disabled' forces the screen to remain in standard horizontal orientation.",
+        "Rotates the screen display. Many Lynx games were designed to be played with the console held vertically. 'Auto' automatically rotates based on the game. 'Left' rotates the screen 90 degrees counter-clockwise. 'Right' rotates the screen 90 degrees clockwise. '180' rotates the screen upside down. 'Disabled' forces the screen to remain in standard horizontal orientation.",
         NULL,
         "video",
         {
@@ -147,6 +163,7 @@ struct retro_core_option_v2_definition option_defs_us[] = {
             { "Left",     NULL },
             { "Right",    NULL },
             { "Disabled", NULL },
+            { "180",      NULL },
             { NULL, NULL },
         },
         "Auto"

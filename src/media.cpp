@@ -24,6 +24,7 @@
 #include "media.h"
 #include "eeprom.h"
 #include "game_drive.h"
+#include "el_cheapo_sd.h"
 #include "miniz.h"
 #include "crc.h"
 #include "game_db.h"
@@ -41,6 +42,7 @@ Media::Media()
     InitPointer(m_nvram);
     InitPointer(m_eeprom_instance);
     InitPointer(m_game_drive_instance);
+    InitPointer(m_el_cheapo_sd_instance);
     InitPointer(m_decrypt_buffer_a);
     InitPointer(m_decrypt_buffer_b);
     InitPointer(m_decrypt_buffer_tmp);
@@ -51,6 +53,8 @@ Media::Media()
     m_forced_console_type = GLYNX_CONSOLE_AUTO;
     m_forced_eeprom = GLYNX_EEPROM_NONE;
     m_eeprom_forced = false;
+    m_forced_cartridge_hardware = GLYNX_CARTRIDGE_HARDWARE_STANDARD;
+    m_cartridge_hardware_forced = false;
     HardReset();
 }
 
@@ -61,6 +65,7 @@ Media::~Media()
     SafeDeleteArray(m_nvram);
     SafeDelete(m_eeprom_instance);
     SafeDelete(m_game_drive_instance);
+    SafeDelete(m_el_cheapo_sd_instance);
     SafeDeleteArray(m_decrypt_buffer_a);
     SafeDeleteArray(m_decrypt_buffer_b);
     SafeDeleteArray(m_decrypt_buffer_tmp);
@@ -71,6 +76,7 @@ void Media::Init()
 {
     m_eeprom_instance = new EEPROM();
     m_game_drive_instance = new GameDrive();
+    m_el_cheapo_sd_instance = new ElCheapoSD();
     m_nvram = new u8[NVRAM_SIZE];
     memset(m_nvram, 0, NVRAM_SIZE);
     m_decrypt_buffer_a = new u8[EPYX_DECRYPT_BLOCK_SIZE];
@@ -94,6 +100,8 @@ void Media::HardReset()
 {
     if (m_game_drive_instance)
         m_game_drive_instance->Configure(false, NULL);
+    if (m_el_cheapo_sd_instance)
+        m_el_cheapo_sd_instance->Configure(false, NULL, NULL, 0);
 
     ReleaseCartBankRAM();
     SafeDeleteArray(m_rom);
@@ -123,6 +131,8 @@ void Media::HardReset()
     m_console_type = GLYNX_CONSOLE_AUTO;
     m_eeprom = GLYNX_EEPROM_NONE;
     m_active_eeprom = GLYNX_EEPROM_NONE;
+    m_detected_cartridge_hardware = GLYNX_CARTRIDGE_HARDWARE_STANDARD;
+    m_active_cartridge_hardware = GLYNX_CARTRIDGE_HARDWARE_STANDARD;
     m_type = MEDIA_LYNX;
     m_audin = false;
     m_audin_value = false;
@@ -495,8 +505,7 @@ GLYNX_Bios_State Media::LoadBios(const char* path)
 {
     using namespace std;
 
-    m_is_bios_loaded = false;
-    m_is_bios_valid = false;
+    UnloadBios();
 
     if (!IsValidFile(path))
     {
@@ -515,15 +524,16 @@ GLYNX_Bios_State Media::LoadBios(const char* path)
 
     int size = static_cast<int>(file.tellg());
 
-    if (size != 0x200)
+    if (size != GLYNX_BIOS_SIZE)
     {
         Error("Incorrect BIOS size %d: %s", size, path);
         file.close();
         return BIOS_LOAD_INVALID_SIZE;
     }
 
+    u8 bios[GLYNX_BIOS_SIZE];
     file.seekg(0, ios::beg);
-    file.read(reinterpret_cast<char*>(m_bios), size);
+    file.read(reinterpret_cast<char*>(bios), size);
     if (!file.good() || file.gcount() != size)
     {
         Error("Failed to load BIOS data: %s", path);
@@ -532,8 +542,46 @@ GLYNX_Bios_State Media::LoadBios(const char* path)
     }
     file.close();
 
+    return LoadBiosData(bios, size, path);
+}
+
+GLYNX_Bios_State Media::LoadBiosFromBuffer(const u8* buffer, int size)
+{
+    return LoadBiosData(buffer, size, NULL);
+}
+
+void Media::UnloadBios()
+{
+    m_is_bios_loaded = false;
+    m_is_bios_valid = false;
+}
+
+GLYNX_Bios_State Media::LoadBiosData(const u8* buffer, int size, const char* path)
+{
+    UnloadBios();
+
+    if (!IsValidPointer(buffer))
+    {
+        Error("Invalid BIOS buffer");
+        return BIOS_LOAD_FILE_ERROR;
+    }
+
+    if (size != GLYNX_BIOS_SIZE)
+    {
+        if (path)
+            Error("Incorrect BIOS size %d: %s", size, path);
+        else
+            Error("Incorrect BIOS size %d", size);
+        return BIOS_LOAD_INVALID_SIZE;
+    }
+
+    memcpy(m_bios, buffer, size);
     m_is_bios_loaded = true;
-    Log("BIOS loaded (%d bytes): %s", size, path);
+
+    if (path)
+        Log("BIOS loaded (%d bytes): %s", size, path);
+    else
+        Log("BIOS loaded (%d bytes)", size);
 
     m_bios[0x1F8] = 0x00;   // Register 0xFFF8 is RAM
     m_bios[0x1F9] = 0x80;   // Register 0xFFF9 is MAPCTL
@@ -544,12 +592,18 @@ GLYNX_Bios_State Media::LoadBios(const char* path)
 
     if (m_is_bios_valid)
     {
-        Log("BIOS CRC is valid: %08X: %s", crc, path);
+        if (path)
+            Log("BIOS CRC is valid: %08X: %s", crc, path);
+        else
+            Log("BIOS CRC is valid: %08X", crc);
         return BIOS_LOAD_OK;
     }
     else
     {
-        Log("WARNING: Incorrect BIOS CRC %08X: %s", crc, path);
+        if (path)
+            Log("WARNING: Incorrect BIOS CRC %08X: %s", crc, path);
+        else
+            Log("WARNING: Incorrect BIOS CRC %08X", crc);
         return BIOS_LOAD_INVALID_CRC;
     }
 }
@@ -654,15 +708,25 @@ void Media::GatherInfoFromDB()
                 m_bank_page_size[1] = k_game_database[i].bank1_page_size;
             }
 
-            if (!m_is_lnx2 && (k_game_database[i].flags & GLYNX_DB_FLAG_ROTATE_LEFT))
+            if (k_game_database[i].flags & GLYNX_DB_FLAG_ROTATE_NONE)
+            {
+                Debug("Forcing rotation to database value: None");
+                m_rotation = GLYNX_ROTATION_DISABLED;
+            }
+            else if (k_game_database[i].flags & GLYNX_DB_FLAG_ROTATE_LEFT)
             {
                 Debug("Forcing rotation to database value: Rotate LEFT");
                 m_rotation = GLYNX_ROTATION_LEFT;
             }
-            else if (!m_is_lnx2 && (k_game_database[i].flags & GLYNX_DB_FLAG_ROTATE_RIGHT))
+            else if (k_game_database[i].flags & GLYNX_DB_FLAG_ROTATE_RIGHT)
             {
                 Debug("Forcing rotation to database value: Rotate RIGHT");
                 m_rotation = GLYNX_ROTATION_RIGHT;
+            }
+            else if (k_game_database[i].flags & GLYNX_DB_FLAG_ROTATE_180)
+            {
+                Debug("Forcing rotation to database value: Rotate 180");
+                m_rotation = GLYNX_ROTATION_180;
             }
 
             if (!m_is_lnx2 && (k_game_database[i].flags & GLYNX_DB_FLAG_AUDIN))
@@ -671,16 +735,62 @@ void Media::GatherInfoFromDB()
                 m_audin = true;
             }
 
-            if (!m_is_lnx2 && (k_game_database[i].flags & GLYNX_DB_FLAG_EEPROM_93C46))
+            GLYNX_EEPROM database_eeprom = GLYNX_EEPROM_NONE;
+            const char* database_eeprom_name = NULL;
+
+            if (k_game_database[i].flags & GLYNX_DB_FLAG_EEPROM_93C46)
             {
-                Debug("Forcing EEPROM to database value: 93C46");
-                m_eeprom = GLYNX_EEPROM_93C46;
+                database_eeprom = GLYNX_EEPROM_93C46;
+                database_eeprom_name = "93C46";
+            }
+            else if (k_game_database[i].flags & GLYNX_DB_FLAG_EEPROM_93C56)
+            {
+                database_eeprom = GLYNX_EEPROM_93C56;
+                database_eeprom_name = "93C56";
+            }
+            else if (k_game_database[i].flags & GLYNX_DB_FLAG_EEPROM_93C66)
+            {
+                database_eeprom = GLYNX_EEPROM_93C66;
+                database_eeprom_name = "93C66";
+            }
+            else if (k_game_database[i].flags & GLYNX_DB_FLAG_EEPROM_93C76)
+            {
+                database_eeprom = GLYNX_EEPROM_93C76;
+                database_eeprom_name = "93C76";
+            }
+            else if (k_game_database[i].flags & GLYNX_DB_FLAG_EEPROM_93C86)
+            {
+                database_eeprom = GLYNX_EEPROM_93C86;
+                database_eeprom_name = "93C86";
+            }
+
+            (void)database_eeprom_name;
+
+            if (!m_is_lnx2 && database_eeprom != GLYNX_EEPROM_NONE)
+            {
+                bool eeprom_8bit = (k_game_database[i].flags & GLYNX_DB_FLAG_EEPROM_8BIT) != 0;
+                if (eeprom_8bit)
+                    database_eeprom = (GLYNX_EEPROM)(database_eeprom | GLYNX_EEPROM_8BIT);
+
+                Debug("Forcing EEPROM to database value: %s%s", database_eeprom_name, eeprom_8bit ? " 8-bit" : "");
+                m_eeprom = database_eeprom;
             }
 
             if (!m_is_lnx2 && (k_game_database[i].flags & GLYNX_DB_FLAG_NVRAM_8KB))
             {
                 Debug("Enabling 8KB NVRAM in bank1");
                 m_nvram_enabled = true;
+            }
+
+            if (k_game_database[i].flags & GLYNX_DB_FLAG_GAMEDRIVE)
+            {
+                Debug("Forcing cartridge hardware to database value: GameDrive");
+                m_detected_cartridge_hardware = GLYNX_CARTRIDGE_HARDWARE_GAME_DRIVE;
+            }
+            else if (k_game_database[i].flags & GLYNX_DB_FLAG_EL_CHEAPO_SD)
+            {
+                Debug("Forcing cartridge hardware to database value: ElCheapoSD");
+                m_detected_cartridge_hardware = GLYNX_CARTRIDGE_HARDWARE_EL_CHEAPO_SD;
             }
 
             if (!m_is_lnx2 && k_game_database[i].console_type != GLYNX_CONSOLE_AUTO)
@@ -742,16 +852,23 @@ bool Media::GatherLynxHeader(const u8* buffer)
     header.rotation = *p;
     p++;
 
-    header.audin = (*p & 0x01) != 0;
+    header.audin = IS_SET_BIT(*p, 0);
     p++;
 
     header.eeprom = *p;
+    p++;
+
+    memcpy(header.reserved, p, sizeof(header.reserved));
+    p += sizeof(header.reserved);
+
+    header.sd_api = *p;
 
     m_bank_page_size[0] = header.bank0_page_size;
     m_bank_page_size[1] = header.bank1_page_size;
     m_rotation = ReadHeaderRotation(header.rotation);
     m_audin = (header.audin == 1);
     m_eeprom = ReadHeaderEEPROM(header.eeprom);
+    m_detected_cartridge_hardware = ReadHeaderCartridgeHardware(m_eeprom, header.sd_api);
     strncpy(m_header_name, header.name, 31);
     m_header_name[31] = 0;
     strncpy(m_header_manufacturer, header.manufacturer, 15);
@@ -806,12 +923,22 @@ bool Media::GatherLynx2Header(const u8* buffer)
     p++;
 
     header.eeprom = *p;
+    p++;
+
+    header.reserved = *p;
+    p++;
+
+    header.custom = *p;
+    p++;
+
+    header.sd_api = *p;
 
     m_is_lnx2 = true;
     m_rotation = ReadHeaderRotation(header.rotation);
     m_audin = ((m_lnx2_bank[CART_BANK_0_A] >> 6) != GLYNX_CART_BANK_UNUSED) || ((m_lnx2_bank[CART_BANK_1_A] >> 6) != GLYNX_CART_BANK_UNUSED);
     m_eeprom = ReadHeaderEEPROM(header.eeprom);
-    if (header.flags & 0x01)
+    m_detected_cartridge_hardware = ReadHeaderCartridgeHardware(m_eeprom, header.sd_api);
+    if (IS_SET_BIT(header.flags, 0))
         m_console_type = GLYNX_CONSOLE_MODEL_II;
 
     strncpy(m_header_name, header.name, 31);
@@ -996,7 +1123,7 @@ GLYNX_EEPROM Media::ReadHeaderEEPROM(u8 eeprom)
 
     if (base_type == GLYNX_EEPROM_NONE)
     {
-        if (eeprom & GLYNX_EEPROM_8BIT)
+        if (IS_SET_BIT(eeprom, 7))
             base_type = GLYNX_EEPROM_93C46;
         else if (eeprom == GLYNX_EEPROM_SD)
         {
@@ -1013,19 +1140,19 @@ GLYNX_EEPROM Media::ReadHeaderEEPROM(u8 eeprom)
     switch (base_type)
     {
         case GLYNX_EEPROM_93C46:
-            Debug("Header EEPROM: 93C46%s%s", (flags & GLYNX_EEPROM_SD) ? " SD" : "", (flags & GLYNX_EEPROM_8BIT) ? " 8-bit" : "");
+            Debug("Header EEPROM: 93C46%s%s", IS_SET_BIT(flags, 6) ? " SD" : "", IS_SET_BIT(flags, 7) ? " 8-bit" : "");
             break;
         case GLYNX_EEPROM_93C56:
-            Debug("Header EEPROM: 93C56%s%s", (flags & GLYNX_EEPROM_SD) ? " SD" : "", (flags & GLYNX_EEPROM_8BIT) ? " 8-bit" : "");
+            Debug("Header EEPROM: 93C56%s%s", IS_SET_BIT(flags, 6) ? " SD" : "", IS_SET_BIT(flags, 7) ? " 8-bit" : "");
             break;
         case GLYNX_EEPROM_93C66:
-            Debug("Header EEPROM: 93C66%s%s", (flags & GLYNX_EEPROM_SD) ? " SD" : "", (flags & GLYNX_EEPROM_8BIT) ? " 8-bit" : "");
+            Debug("Header EEPROM: 93C66%s%s", IS_SET_BIT(flags, 6) ? " SD" : "", IS_SET_BIT(flags, 7) ? " 8-bit" : "");
             break;
         case GLYNX_EEPROM_93C76:
-            Debug("Header EEPROM: 93C76%s%s", (flags & GLYNX_EEPROM_SD) ? " SD" : "", (flags & GLYNX_EEPROM_8BIT) ? " 8-bit" : "");
+            Debug("Header EEPROM: 93C76%s%s", IS_SET_BIT(flags, 6) ? " SD" : "", IS_SET_BIT(flags, 7) ? " 8-bit" : "");
             break;
         case GLYNX_EEPROM_93C86:
-            Debug("Header EEPROM: 93C86%s%s", (flags & GLYNX_EEPROM_SD) ? " SD" : "", (flags & GLYNX_EEPROM_8BIT) ? " 8-bit" : "");
+            Debug("Header EEPROM: 93C86%s%s", IS_SET_BIT(flags, 6) ? " SD" : "", IS_SET_BIT(flags, 7) ? " 8-bit" : "");
             break;
         default:
             Debug("Invalid EEPROM value in header: %d", eeprom);
@@ -1035,16 +1162,58 @@ GLYNX_EEPROM Media::ReadHeaderEEPROM(u8 eeprom)
     return (GLYNX_EEPROM)(base_type | flags);
 }
 
+GLYNX_Cartridge_Hardware Media::ReadHeaderCartridgeHardware(GLYNX_EEPROM eeprom, u8 sd_api)
+{
+    if (IS_NOT_SET_BIT(eeprom, 6))
+        return GLYNX_CARTRIDGE_HARDWARE_STANDARD;
+
+    switch (sd_api)
+    {
+        case GLYNX_SD_API_GAME_DRIVE:
+            Debug("Header SD API: GameDrive");
+            return GLYNX_CARTRIDGE_HARDWARE_GAME_DRIVE;
+        case GLYNX_SD_API_EL_CHEAPO_SD:
+            Debug("Header SD API: ElCheapoSD");
+            return GLYNX_CARTRIDGE_HARDWARE_EL_CHEAPO_SD;
+        default:
+            Error("Unsupported header SD API: %d", sd_api);
+            return GLYNX_CARTRIDGE_HARDWARE_STANDARD;
+    }
+}
+
 void Media::ApplyEEPROMConfiguration()
 {
-    GLYNX_EEPROM previous_eeprom = m_active_eeprom;
     m_active_eeprom = m_eeprom_forced ? m_forced_eeprom : m_eeprom;
-    m_eeprom_instance->Reset(m_active_eeprom);
+    GLYNX_EEPROM physical_eeprom = (GLYNX_EEPROM)(m_active_eeprom & ~GLYNX_EEPROM_SD);
+    m_eeprom_instance->Reset(physical_eeprom);
 
-    if ((previous_eeprom & GLYNX_EEPROM_SD) != (m_active_eeprom & GLYNX_EEPROM_SD))
-        m_game_drive_instance->Configure((m_active_eeprom & GLYNX_EEPROM_SD) != 0, m_file_directory);
+    ApplyCartridgeHardwareConfiguration();
+}
+
+void Media::ApplyCartridgeHardwareConfiguration()
+{
+    GLYNX_Cartridge_Hardware previous = m_active_cartridge_hardware;
+    m_active_cartridge_hardware = m_cartridge_hardware_forced ? m_forced_cartridge_hardware : m_detected_cartridge_hardware;
+
+    if (previous != m_active_cartridge_hardware)
+    {
+        m_game_drive_instance->Configure(m_active_cartridge_hardware == GLYNX_CARTRIDGE_HARDWARE_GAME_DRIVE, m_file_directory);
+        m_el_cheapo_sd_instance->Configure(m_active_cartridge_hardware == GLYNX_CARTRIDGE_HARDWARE_EL_CHEAPO_SD,
+            m_file_directory, m_cart_bank_data[CART_BANK_0], m_cart_bank_size[CART_BANK_0]);
+    }
     else
+    {
         m_game_drive_instance->Reset(false);
+        if (m_active_cartridge_hardware == GLYNX_CARTRIDGE_HARDWARE_EL_CHEAPO_SD)
+        {
+            m_el_cheapo_sd_instance->Configure(true, m_file_directory,
+                m_cart_bank_data[CART_BANK_0], m_cart_bank_size[CART_BANK_0]);
+        }
+        else
+        {
+            m_el_cheapo_sd_instance->Reset(false);
+        }
+    }
 }
 
 bool Media::IsValidFile(const char* path)
@@ -1092,24 +1261,39 @@ void Media::SaveState(std::ostream& stream)
 {
     StateSerializer serializer(stream);
     Serialize(serializer, GLYNX_SAVESTATE_VERSION);
-    if (m_active_eeprom != GLYNX_EEPROM_NONE)
+    if (m_eeprom_instance->IsAvailable())
         m_eeprom_instance->SaveState(stream);
     if (m_game_drive_instance->IsAvailable())
         m_game_drive_instance->SaveState(stream);
+    if (m_el_cheapo_sd_instance->IsAvailable())
+        m_el_cheapo_sd_instance->SaveState(stream);
 }
 
 void Media::LoadState(std::istream& stream, int version)
 {
     StateSerializer serializer(stream);
     Serialize(serializer, version);
-    if (m_active_eeprom != GLYNX_EEPROM_NONE)
+    bool legacy_eeprom_state = version < 18 && m_active_eeprom != GLYNX_EEPROM_NONE;
+    bool legacy_sd_only_eeprom = legacy_eeprom_state && !m_eeprom_instance->IsAvailable();
+    if (legacy_sd_only_eeprom)
+        m_eeprom_instance->Reset(m_active_eeprom);
+    if (legacy_eeprom_state || m_eeprom_instance->IsAvailable())
         m_eeprom_instance->LoadState(stream);
+    if (legacy_sd_only_eeprom)
+        m_eeprom_instance->Reset(GLYNX_EEPROM_NONE);
     if (m_game_drive_instance->IsAvailable())
     {
         if (version >= 17)
             m_game_drive_instance->LoadState(stream);
         else
             m_game_drive_instance->Reset(false);
+    }
+    if (m_el_cheapo_sd_instance->IsAvailable())
+    {
+        if (version == 18)
+            m_el_cheapo_sd_instance->LoadState(stream);
+        else
+            m_el_cheapo_sd_instance->Reset(false);
     }
     if (m_persistent_ram_size > 0)
         m_save_memory_dirty = true;

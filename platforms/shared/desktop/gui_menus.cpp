@@ -322,7 +322,7 @@ static void menu_emulator(void)
 
         if (ImGui::BeginMenu("Console Type"))
         {
-            ImGui::PushItemWidth(120.0f);
+            ImGui::PushItemWidth(100.0f);
             if (ImGui::Combo("##console_type", &config_emulator.console_type, "Auto\0Lynx I\0Lynx II\0\0"))
             {
                 emu_force_console_type(config_emulator.console_type);
@@ -342,6 +342,25 @@ static void menu_emulator(void)
                 "93C86 - 2 KB - 16-bit\093C86 - 2 KB - 8-bit\0\0"))
             {
                 emu_force_eeprom(config_emulator.eeprom);
+            }
+            if (ImGui::IsItemHovered())
+            {
+                ImGui::BeginTooltip();
+                ImGui::Text("It is recommended to leave this option on Auto.");
+                ImGui::Text("Reload the game to apply changes.");
+                ImGui::EndTooltip();
+            }
+            ImGui::PopItemWidth();
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Cartridge Hardware"))
+        {
+            ImGui::PushItemWidth(130.0f);
+            if (ImGui::Combo("##cartridge_hardware", &config_emulator.cartridge_hardware,
+                "Auto\0Standard\0GameDrive\0ElCheapoSD\0\0"))
+            {
+                emu_force_cartridge_hardware(config_emulator.cartridge_hardware);
             }
             if (ImGui::IsItemHovered())
             {
@@ -568,12 +587,15 @@ static void menu_emulator(void)
 
         ImGui::Separator();
 
-        ImGui::MenuItem("Fast Sprite Rendering", "", &config_emulator.fast_sprite_rendering);
+        ImGui::MenuItem("Legacy Sprite Renderer", "", &config_emulator.fast_sprite_rendering);
         if (ImGui::IsItemHovered())
         {
             ImGui::BeginTooltip();
+            ImGui::Text("NOT RECOMMENDED");
+            ImGui::Text("RESET REQUIRED");
+            ImGui::NewLine();
             ImGui::Text("Use a simpler Suzy sprite renderer.");
-            ImGui::Text("This is faster but it is less accurate.");
+            ImGui::Text("It is faster but it is less accurate.");
             ImGui::EndTooltip();
         }
 
@@ -659,7 +681,7 @@ static void menu_video(void)
         if (ImGui::BeginMenu("Rotation"))
         {
             ImGui::PushItemWidth(120.0f);
-            ImGui::Combo("##rotation", &config_video.rotation, "Auto\0Rotate LEFT\0Rotate RIGHT\0Disabled\0\0");
+            ImGui::Combo("##rotation", &config_video.rotation, "Auto\0Rotate LEFT\0Rotate RIGHT\0Disabled\0Rotate 180\0\0");
             emu_force_rotation(config_video.rotation);
             ImGui::PopItemWidth();
             ImGui::EndMenu();

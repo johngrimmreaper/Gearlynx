@@ -62,6 +62,7 @@ public:
         u16_union DISPADR;
         u8 irq_pending;
         u8 irq_mask;
+        bool suzy_done_pending;
         bool frame_ready;
         u16 dispadr_latch;
         bool rest;
@@ -84,6 +85,7 @@ public:
     Mikey_State* GetState();
     LcdScreen* GetLcdScreen();
     bool SwitchAudInValue();
+    void SetSuzyDone();
     void SetTraceLogger(TraceLogger* trace_logger);
     void SetDebugOutputEnabled(bool enabled);
     bool IsDebugOutputEnabled();
@@ -103,6 +105,8 @@ private:
     template<bool debug = false> void WriteAudio(u16 address, u8 value);
     u8 ReadAudioExtra(u16 address);
     void WriteAudioExtra(u16 address, u8 value);
+    void Advance(u32 cycles);
+    void SynchronizeCPURead();
     void UpdateTimers(u32 cycles);
     bool BorrowInTimer(int i, GLYNX_Mikey_Timer* t);
     void UpdateAudio(u32 cycles);
@@ -134,6 +138,7 @@ private:
     bool m_is_lynx2;
     bool m_debug_output_enabled;
     TraceLogger* m_trace_logger;
+    u32 m_cpu_read_cycles;
 };
 
 static const u32 k_mikey_timer_period_us[8] = { 1, 2, 4, 8, 16, 32, 64, 0 };

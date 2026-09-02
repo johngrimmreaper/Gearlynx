@@ -138,6 +138,23 @@ int main(int argc, char* argv[])
                 }
                 app_params.debug_monitor_port = (int)port;
             }
+            else if (strcmp(argv[i], "--comlynx-join") == 0)
+            {
+                if (i + 1 >= argc || argv[i + 1][0] == '-')
+                {
+                    fprintf(stderr, "Missing value for --comlynx-join\n");
+                    return -1;
+                }
+                char* end = NULL;
+                long session = strtol(argv[++i], &end, 10);
+                if (!end || *end != '\0' || session <= 0 || session > 255)
+                {
+                    fprintf(stderr, "Invalid ComLynx session: %s\n", argv[i]);
+                    return -1;
+                }
+                app_params.comlynx_session = (int)session;
+                app_params.comlynx_session_set = true;
+            }
             else
             {
                 printf("Unknown option: %s\n", argv[i]);
@@ -152,7 +169,8 @@ int main(int argc, char* argv[])
     {
         if ((strcmp(argv[i], "--mcp-http-port") == 0) ||
             (strcmp(argv[i], "--mcp-http-address") == 0) ||
-            (strcmp(argv[i], "--debug-monitor-port") == 0))
+            (strcmp(argv[i], "--debug-monitor-port") == 0) ||
+            (strcmp(argv[i], "--comlynx-join") == 0))
         {
             if (i + 1 < argc)
                 i++;
@@ -186,21 +204,24 @@ int main(int argc, char* argv[])
     if (show_usage)
     {
         printf("Usage: %s [options] [game_file] [symbol_file]\n", argv[0]);
-        printf("  [game_file]         Game file: accepts ROMs (.lyx, .lnx, .o) or ZIP (.zip)\n");
+        printf("\nArguments:\n");
+        printf("  [game_file]                 Game file: accepts ROMs (.lyx, .lnx, .o) or ZIP (.zip)\n");
+        printf("  [symbol_file]               Optional symbol file for debugging\n");
         printf("\nOptions:\n");
-        printf("  -f, --fullscreen      Start in fullscreen mode\n");
-        printf("  -w, --windowed        Start in windowed mode with menu visible\n");
-        printf("      --mcp-stdio       Auto-start MCP server with stdio transport\n");
-        printf("      --mcp-http        Auto-start MCP server with HTTP transport\n");
-        printf("      --mcp-router      Enable compact MCP tool routing\n");
-        printf("      --mcp-http-address A HTTP bind address (default: 127.0.0.1)\n");
-        printf("      --mcp-http-port N HTTP port for MCP server (default: 7777)\n");
-        printf("      --debug-monitor       Start debug monitor TCP server (default port: 6502)\n");
-        printf("      --debug-monitor-port N Debug monitor port, 1-65534 (default: 6502)\n");
-        printf("      --headless        Run without GUI (requires --mcp-stdio, --mcp-http, or --debug-monitor)\n");
-        printf("      --portable        Store configuration and user data beside the application\n");
-        printf("  -v, --version         Display version information\n");
-        printf("  -h, --help            Display this help message\n");
+        printf("  -f, --fullscreen            Start in fullscreen mode\n");
+        printf("  -w, --windowed              Start in windowed mode with menu visible\n");
+        printf("      --mcp-stdio             Auto-start MCP server with stdio transport\n");
+        printf("      --mcp-http              Auto-start MCP server with HTTP transport\n");
+        printf("      --mcp-router            Enable compact MCP tool routing\n");
+        printf("      --mcp-http-address A    HTTP bind address (default: 127.0.0.1)\n");
+        printf("      --mcp-http-port N       HTTP port for MCP server (default: 7777)\n");
+        printf("      --debug-monitor         Start debug monitor TCP server (default port: 6502)\n");
+        printf("      --debug-monitor-port N  Debug monitor port, 1-65534 (default: 6502)\n");
+        printf("      --comlynx-join N        Join local ComLynx shared session 1-255\n");
+        printf("      --headless              Run without GUI (requires MCP, debug monitor, or ComLynx)\n");
+        printf("      --portable              Store configuration and user data beside the application\n");
+        printf("  -v, --version               Display version information\n");
+        printf("  -h, --help                  Display this help message\n");
         return ret;
     }
 
@@ -219,6 +240,11 @@ int main(int argc, char* argv[])
         config_emulator.mcp_http_address = app_params.mcp_http_address;
     else
         app_params.mcp_http_address = config_emulator.mcp_http_address;
+
+    if (app_params.comlynx_session_set)
+        config_emulator.comlynx_session = app_params.comlynx_session;
+    else
+        app_params.comlynx_session = config_emulator.comlynx_session;
 
     if (headless)
     {

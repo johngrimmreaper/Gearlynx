@@ -1,3 +1,79 @@
+gearlynx (1.2.31-1) UNRELEASED; urgency=medium
+
+  * New iOS App (in development)
+  * Better VSync at different refresh rates
+  * Minimized input lag with 120, 144 and 240 Hz screens
+  * Updated Game Controller DB
+  * Improved debugger tools
+  * Many bug fixes and improvements
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Tue, 1 Sep 2026 23:37:09 +0200
+
+gearlynx (1.2.30-1) UNRELEASED; urgency=medium
+
+  * IPS soft-patching support
+  * Improved light theme
+  * Many bug fixes and improvements
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Wed, 26 Aug 2026 18:46:54 +0200
+
+gearlynx (1.2.29-1) UNRELEASED; urgency=medium
+
+  * Release 1.2.29.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Wed, 26 Aug 2026 15:43:21 +0200
+
+gearlynx (1.2.28-1) UNRELEASED; urgency=medium
+
+  * Performance optimizations
+  * Improved VGM recorder with precise timing
+  * Improved MCP server
+  * Improved Trace Logger in debugger
+  * Many bug fixes and improvements
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sat, 22 Aug 2026 11:28:40 +0000
+
+gearlynx (1.2.27-1) UNRELEASED; urgency=medium
+
+  * Release 1.2.27.
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Tue, 18 Aug 2026 11:01:27 +0200
+
+gearlynx (1.2.26-1) UNRELEASED; urgency=medium
+
+  * Added ComLynx turbo mode support (1MBd)
+  * Optimized ComLynx performance
+  * Improved accuracy VGM timing
+  * Many bug fixes and improvements
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sun, 16 Aug 2026 03:38:51 +0200
+
+gearlynx (1.2.25-1) UNRELEASED; urgency=medium
+
+  * Improved ComLynx with IPC shared memory transport
+  * Added Sharp Bilinear display shaders
+  * Improved hardware timer accuracy
+  * Many bug fixes and improvements
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sat, 15 Aug 2026 01:19:42 +0200
+
+gearlynx (1.2.24-1) UNRELEASED; urgency=medium
+
+  * Greatly improved ComLynx support
+  * Improved debug trace logger with RedEye protocol support
+  * Many bug fixes and improvements
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Wed, 12 Aug 2026 16:07:11 +0200
+
+gearlynx (1.2.23-1) UNRELEASED; urgency=medium
+
+  * ComLynx support for up to eight emulator instances on the same machine
+    or LAN
+  * Improved serializable RNG state
+  * Many bug fixes and improvements
+
+ -- Reaper <JohnGrimmReaper@disroot.org>  Sun, 9 Aug 2026 19:25:55 +0200
+
 gearlynx (1.2.22-1) UNRELEASED; urgency=medium
 
   * Improved Suzy and CPU sleep timing accuracy

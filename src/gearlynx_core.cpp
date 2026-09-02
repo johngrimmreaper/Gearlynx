@@ -33,6 +33,7 @@
 #include "m6502.h"
 #include "suzy.h"
 #include "mikey.h"
+#include "random.h"
 #include "trace_logger.h"
 #include "memory_stream.h"
 
@@ -46,9 +47,14 @@ GearlynxCore::GearlynxCore()
     InitPointer(m_m6502);
     InitPointer(m_suzy);
     InitPointer(m_mikey);
+    InitPointer(m_random);
     InitPointer(m_trace_logger);
     m_paused = true;
     m_total_cycles = 0;
+    m_comlynx_sync_callback = NULL;
+    m_comlynx_sync_user_data = NULL;
+    m_comlynx_next_sync_cycle = 0;
+    m_comlynx_sync_cycles = COMLYNX_MAX_SYNC_CYCLES;
 }
 
 GearlynxCore::~GearlynxCore()
@@ -61,6 +67,7 @@ GearlynxCore::~GearlynxCore()
     SafeDelete(m_memory);
     SafeDelete(m_suzy);
     SafeDelete(m_mikey);
+    SafeDelete(m_random);
     SafeDelete(m_trace_logger);
 }
 
@@ -68,17 +75,16 @@ void GearlynxCore::Init(GLYNX_Pixel_Format pixel_format)
 {
     Log("Loading %s core %s by Ignacio Sanchez", GLYNX_TITLE, GLYNX_VERSION);
 
-    srand((unsigned int)time(NULL));
-
     m_media = new Media();
     m_bus = new Bus();
-    m_m6502 = new M6502(m_bus);
+    m_random = new Random();
+    m_random->Seed((u32)time(NULL));
+    m_m6502 = new M6502(m_bus, m_random);
     m_input = new Input(m_media);
     m_suzy = new Suzy(m_media, m_m6502, m_input, m_bus);
-    m_mikey = new Mikey(m_suzy, m_media, m_m6502, m_bus);
-    m_memory = new Memory(m_media, m_input, m_suzy, m_mikey, m_m6502, m_bus);
+    m_mikey = new Mikey(m_suzy, m_media, m_m6502, m_bus, m_random);
+    m_memory = new Memory(m_media, m_input, m_suzy, m_mikey, m_m6502, m_bus, m_random);
     m_audio = new Audio(m_mikey);
-    m_trace_logger = new TraceLogger();
 
     m_media->Init();
     m_memory->Init();
@@ -90,14 +96,194 @@ void GearlynxCore::Init(GLYNX_Pixel_Format pixel_format)
     m_mikey->SetAudio(m_audio);
     m_m6502->Init(m_memory);
 
+#if !defined(GLYNX_DISABLE_DISASSEMBLER)
+    m_trace_logger = new TraceLogger(&m_total_cycles);
     m_m6502->SetTraceLogger(m_trace_logger);
     m_suzy->SetTraceLogger(m_trace_logger);
     m_mikey->SetTraceLogger(m_trace_logger);
+    m_media->SetTraceLogger(m_trace_logger);
+#endif
+
 }
 
-bool GearlynxCore::LoadROM(const char* file_path)
+template<bool debugger>
+bool GearlynxCore::RunToVBlankTemplate(u8* frame_buffer, s16* sample_buffer,
+    int* sample_count, GLYNX_Debug_Run* debug, bool render)
 {
-    if (m_media->LoadFromFile(file_path))
+    m_mikey->GetLcdScreen()->SetBuffer(frame_buffer);
+#if !defined(GLYNX_DISABLE_DISASSEMBLER)
+    m_suzy->BeginSpriteBoundingBoxFrame();
+#endif
+
+    if (debugger)
+    {
+        bool debug_enable = false;
+
+        if (IsValidPointer(debug))
+        {
+            debug_enable = true;
+            m_m6502->EnableBreakpoints(debug->stop_on_breakpoint, debug->stop_on_irq);
+            m_m6502->SetSkipIRQOnStep(debug->skip_interrupts_on_step);
+        }
+
+        m_m6502->SetDebugBRK(debug_enable && debug->stop_on_brk,
+            debug_enable ? debug->brk_value : 0,
+            debug_enable && debug->brk_trigger_irq);
+
+        bool stop = false;
+        u32 failsafe_cycle_count = 0;
+
+        do
+        {
+            u32 cpu_cycles = m_m6502->RunInstruction();
+            u32 bus_cycles = m_bus->ConsumeCycles();
+            u32 suzy_stolen_cycles = m_bus->ConsumeSuzyStolenCycles();
+            u32 lynx_cycles = cpu_cycles + bus_cycles;
+            u32 suzy_cycles = m_suzy->ApplyBusStall(&lynx_cycles, suzy_stolen_cycles);
+            m_total_cycles += lynx_cycles;
+            SynchronizeComLynx();
+
+            //Debug("-> CPU cycles=%u, Lynx cycles=%u", cpu_cycles, lynx_cycles);
+
+            if (m_m6502->IsHalted())
+            {
+                stop = m_mikey->Clock(lynx_cycles);
+                if (m_m6502->IsHalted())
+                    m_suzy->Clock(suzy_cycles);
+            }
+            else
+            {
+                m_suzy->Clock(suzy_cycles);
+                stop = m_mikey->Clock(lynx_cycles);
+            }
+            m_audio->Clock(lynx_cycles);
+
+#if !defined(GLYNX_DISABLE_DISASSEMBLER)
+            if (stop)
+                m_suzy->SwapFrameSCBList();
+#endif
+
+            failsafe_cycle_count += lynx_cycles;
+            if (failsafe_cycle_count > 450000)
+            {
+                Debug("Exceeded max cycles in RunToVBlankTemplate");
+                stop = true;
+            }
+
+            if (debug_enable)
+            {
+                if (debug->step_debugger && !m_m6502->IsHalted())
+                    stop = true;
+
+                if (m_m6502->BreakpointHit())
+                    stop = true;
+
+                if (debug->stop_on_run_to_breakpoint && m_m6502->RunToBreakpointHit())
+                    stop = true;
+            }
+        }
+        while (!stop);
+
+#if !defined(GLYNX_DISABLE_DISASSEMBLER)
+        m_suzy->EndSpriteBoundingBoxFrame();
+#endif
+        if (render)
+            m_mikey->GetLcdScreen()->EndFrame(m_media->GetRotation());
+        m_audio->EndFrame(sample_buffer, sample_count);
+
+        return m_m6502->BreakpointHit() || m_m6502->RunToBreakpointHit();
+    }
+    else
+    {
+        UNUSED(debug);
+
+        bool stop = false;
+        u32 failsafe_cycle_count = 0;
+
+        do
+        {
+            u32 cpu_cycles = m_m6502->RunInstruction();
+            u32 bus_cycles = m_bus->ConsumeCycles();
+            u32 suzy_stolen_cycles = m_bus->ConsumeSuzyStolenCycles();
+            u32 lynx_cycles = cpu_cycles + bus_cycles;
+            u32 suzy_cycles = m_suzy->ApplyBusStall(&lynx_cycles, suzy_stolen_cycles);
+            m_total_cycles += lynx_cycles;
+            SynchronizeComLynx();
+
+            if (m_m6502->IsHalted())
+            {
+                stop = m_mikey->Clock(lynx_cycles);
+                if (m_m6502->IsHalted())
+                    m_suzy->Clock(suzy_cycles);
+            }
+            else
+            {
+                m_suzy->Clock(suzy_cycles);
+                stop = m_mikey->Clock(lynx_cycles);
+            }
+            m_audio->Clock(lynx_cycles);
+
+            failsafe_cycle_count += lynx_cycles;
+            if (failsafe_cycle_count > 450000)
+            {
+                Debug("Exceeded max cycles in RunToVBlankTemplate");
+                stop = true;
+            }
+        }
+        while (!stop);
+
+#if !defined(GLYNX_DISABLE_DISASSEMBLER)
+        m_suzy->EndSpriteBoundingBoxFrame();
+#endif
+        if (render)
+            m_mikey->GetLcdScreen()->EndFrame(m_media->GetRotation());
+        m_audio->EndFrame(sample_buffer, sample_count);
+
+        return false;
+    }
+}
+
+bool GearlynxCore::RunToVBlank(u8* frame_buffer, s16* sample_buffer,
+    int* sample_count, GLYNX_Debug_Run* debug, bool render)
+{
+    if (!m_media->IsBiosLoaded())
+    {
+        if (render)
+            m_mikey->GetLcdScreen()->RenderNoBiosScreen(frame_buffer);
+        return false;
+    }
+
+    if (!m_mikey->IsPoweredOn())
+    {
+        if (render)
+            m_mikey->GetLcdScreen()->RenderNoPowerScreen(frame_buffer);
+        return false;
+    }
+
+    if (m_paused || !m_media->IsReady())
+        return false;
+
+#if defined(GLYNX_DISABLE_DISASSEMBLER)
+    const bool debugger = false;
+#else
+    const bool debugger = true;
+#endif
+
+    if (debugger)
+        return RunToVBlankTemplate<true>(frame_buffer, sample_buffer, sample_count, debug, render);
+    else
+        return RunToVBlankTemplate<false>(frame_buffer, sample_buffer, sample_count, debug, render);
+}
+
+void GearlynxCore::RenderFrameBuffer(u8* frame_buffer)
+{
+    m_mikey->GetLcdScreen()->SetBuffer(frame_buffer);
+    m_mikey->GetLcdScreen()->EndFrame(m_media->GetRotation());
+}
+
+bool GearlynxCore::LoadROM(const char* file_path, bool softpatching)
+{
+    if (m_media->LoadFromFile(file_path, softpatching))
     {
         m_memory->ResetDisassemblerRecords();
         Reset();
@@ -156,7 +342,10 @@ bool GearlynxCore::GetRuntimeInfo(GLYNX_Runtime_Info& runtime_info)
     u8 t0_prescaler = mikey_state->timers[0].control_a & 0x07;
     float tick_T0_us = (float)k_mikey_timer_period_us[t0_prescaler];
 
-    runtime_info.frame_time = ((t0_backup + 1.0f) * tick_T0_us * (t2_backup + 1.0f)) / 1000.0f;
+    if (mikey_state->timers[0].backup == 0 && mikey_state->timers[2].backup == 0)
+        runtime_info.frame_time = 0.0f;
+    else
+        runtime_info.frame_time = ((t0_backup + 1.0f) * tick_T0_us * (t2_backup + 1.0f)) / 1000.0f;
 
     return m_media->IsReady();
 }
@@ -169,6 +358,35 @@ u64 GearlynxCore::GetTotalCycles()
 TraceLogger* GearlynxCore::GetTraceLogger()
 {
     return m_trace_logger;
+}
+
+void GearlynxCore::SetComLynxCallbacks(GLYNX_ComLynx_Publish_Callback publish_callback,
+    GLYNX_ComLynx_Sample_Callback sample_callback, GLYNX_ComLynx_Break_Callback break_callback,
+    GLYNX_ComLynx_Sync_Callback sync_callback, void* user_data)
+{
+    m_mikey->SetComLynxCallbacks(publish_callback, sample_callback, break_callback, sync_callback, user_data);
+
+    m_comlynx_sync_callback = sync_callback;
+    m_comlynx_sync_user_data = user_data;
+
+    m_comlynx_next_sync_cycle = m_total_cycles;
+    m_comlynx_sync_cycles = m_mikey->GetComLynxSyncCycles();
+}
+
+void GearlynxCore::SetComLynxTurboCallbacks(GLYNX_ComLynx_Turbo_Sample_Callback sample_callback,
+    GLYNX_ComLynx_Turbo_Sync_Callback sync_callback, void* user_data)
+{
+    m_mikey->SetComLynxTurboCallbacks(sample_callback, sync_callback, user_data);
+}
+
+void GearlynxCore::SetComLynxCableConnected(bool connected)
+{
+    m_mikey->SetComLynxCableConnected(connected);
+}
+
+bool GearlynxCore::IsComLynxCableConnected() const
+{
+    return m_mikey->IsComLynxCableConnected();
 }
 
 void GearlynxCore::KeyPressed(GLYNX_Keys key)
@@ -211,7 +429,7 @@ void GearlynxCore::ResetROM(bool preserve_ram)
     if (preserve_ram)
         m_media->SaveRam(stream);
 
-    Log("Gearlynx RESET");
+    Log(GLYNX_TITLE " RESET");
     Reset();
     m_m6502->DisassembleNextOPCode();
 
@@ -491,6 +709,7 @@ bool GearlynxCore::SaveState(std::ostream& stream, size_t& size, bool screenshot
     m_audio->SaveState(stream);
     m_input->SaveState(stream);
     m_media->SaveState(stream);
+    m_random->SaveState(stream);
 
 #if defined(__LIBRETRO__)
     GLYNX_SaveState_Header_Libretro header;
@@ -710,6 +929,11 @@ bool GearlynxCore::LoadState(std::istream& stream)
     m_input->LoadState(stream);
     m_media->LoadState(stream, header.version);
 
+    if (header.version >= 21)
+    {
+        m_random->LoadState(stream);
+    }
+
     return true;
 }
 
@@ -841,6 +1065,7 @@ void GearlynxCore::Reset()
 {
     m_paused = false;
     m_total_cycles = 0;
+    m_comlynx_next_sync_cycle = 0;
 
     m_media->Reset();
 
@@ -853,6 +1078,8 @@ void GearlynxCore::Reset()
     m_audio->Reset(is_lynx2);
     m_bus->Reset();
     m_input->Reset();
+
+    m_comlynx_sync_cycles = m_mikey->GetComLynxSyncCycles();
 
     if (m_media->GetType() != Media::MEDIA_LYNX)
         PrepareForHomebrew();

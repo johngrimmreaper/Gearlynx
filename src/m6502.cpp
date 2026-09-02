@@ -26,11 +26,14 @@
 #include "m6502_timing.h"
 #include "bus.h"
 #include "memory.h"
+#include "random.h"
 #include "state_serializer.h"
+#include "trace_logger.h"
 
-M6502::M6502(Bus* bus)
+M6502::M6502(Bus* bus, Random* random)
 {
     m_bus = bus;
+    m_random = random;
     InitPointer(m_memory);
     InitPointer(m_trace_logger);
     m_opcode_cycles = k_m6502_opcode_cycles_lynx2;
@@ -83,9 +86,49 @@ void M6502::SetTraceLogger(TraceLogger* trace_logger)
     m_trace_logger = trace_logger;
 }
 
+void M6502::LogInstructionEvent()
+{
+#if !defined(GLYNX_DISABLE_DISASSEMBLER)
+    GLYNX_Trace_Entry entry = {};
+    entry.type = TRACE_CPU;
+    entry.cpu.pc = m_s.PC.GetValue();
+    entry.cpu.a = m_s.A.GetValue();
+    entry.cpu.x = m_s.X.GetValue();
+    entry.cpu.y = m_s.Y.GetValue();
+    entry.cpu.s = m_s.S.GetValue();
+    entry.cpu.p = m_s.P.GetValue();
+    entry.cpu.mapctl = m_memory->GetState()->MAPCTL;
+    entry.cpu.opcodes[0] = m_memory->Read<true>(entry.cpu.pc);
+    entry.cpu.size = MIN(m_opcode_sizes[entry.cpu.opcodes[0]], (u8)sizeof(entry.cpu.opcodes));
+    for (u8 i = 1; i < entry.cpu.size; i++)
+        entry.cpu.opcodes[i] = m_memory->Read<true>((u16)(entry.cpu.pc + i));
+
+    GLYNX_Disassembler_Record* record = m_memory->GetDisassemblerRecord(entry.cpu.pc);
+    if (IsValidPointer(record))
+        strncpy_fit(entry.cpu.name, record->name, sizeof(entry.cpu.name));
+
+    m_trace_logger->TraceLog(entry);
+#endif
+}
+
+void M6502::LogIRQEvent(u16 pc, u16 vector)
+{
+#if !defined(GLYNX_DISABLE_DISASSEMBLER)
+    GLYNX_Trace_Entry entry = {};
+    entry.type = TRACE_CPU_IRQ;
+    entry.irq.pc = pc;
+    entry.irq.vector = vector;
+    entry.irq.irq_mask = (u8)m_s.debug_irq_mask;
+    m_trace_logger->TraceLog(entry);
+#else
+    UNUSED(pc);
+    UNUSED(vector);
+#endif
+}
+
 void M6502::Reset(bool is_lynx2)
 {
-    InitOPCodeFunctors(is_lynx2);
+    InitOPCodeTable(is_lynx2);
 
     m_s.PC.SetLow(m_memory->Read(0xFFFC));
     m_s.PC.SetHigh(m_memory->Read(0xFFFD));
@@ -94,11 +137,12 @@ void M6502::Reset(bool is_lynx2)
 
     if (m_reset_value < 0)
     {
-        m_s.A.SetValue(rand() & 0xFF);
-        m_s.X.SetValue(rand() & 0xFF);
-        m_s.Y.SetValue(rand() & 0xFF);
-        m_s.S.SetValue(rand() & 0xFF);
-        m_s.P.SetValue(rand() & 0xFF);
+        u32 rnd = m_random->Next();
+        m_s.A.SetValue((u8)rnd);
+        m_s.X.SetValue((u8)(rnd >> 8));
+        m_s.Y.SetValue((u8)(rnd >> 16));
+        m_s.S.SetValue((u8)(rnd >> 24));
+        m_s.P.SetValue(m_random->Next8Bit());
     }
     else
     {

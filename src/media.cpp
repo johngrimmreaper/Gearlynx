@@ -25,8 +25,11 @@
 #include "eeprom.h"
 #include "game_drive.h"
 #include "el_cheapo_sd.h"
+#define MINIZ_NO_ZLIB_COMPATIBLE_NAMES
 #include "miniz.h"
+#undef MINIZ_NO_ZLIB_COMPATIBLE_NAMES
 #include "crc.h"
+#include "ips_patch.h"
 #include "game_db.h"
 #include "state_serializer.h"
 
@@ -43,6 +46,7 @@ Media::Media()
     InitPointer(m_eeprom_instance);
     InitPointer(m_game_drive_instance);
     InitPointer(m_el_cheapo_sd_instance);
+    InitPointer(m_trace_logger);
     InitPointer(m_decrypt_buffer_a);
     InitPointer(m_decrypt_buffer_b);
     InitPointer(m_decrypt_buffer_tmp);
@@ -55,6 +59,8 @@ Media::Media()
     m_eeprom_forced = false;
     m_forced_cartridge_hardware = GLYNX_CARTRIDGE_HARDWARE_STANDARD;
     m_cartridge_hardware_forced = false;
+    m_softpatch_applied = false;
+    m_softpatch_path[0] = 0;
     HardReset();
 }
 
@@ -75,6 +81,7 @@ Media::~Media()
 void Media::Init()
 {
     m_eeprom_instance = new EEPROM();
+    m_eeprom_instance->SetTraceLogger(m_trace_logger);
     m_game_drive_instance = new GameDrive();
     m_el_cheapo_sd_instance = new ElCheapoSD();
     m_nvram = new u8[NVRAM_SIZE];
@@ -84,6 +91,13 @@ void Media::Init()
     m_decrypt_buffer_tmp = new u8[EPYX_DECRYPT_BLOCK_SIZE];
     m_decrypt_buffer_sub = new u8[EPYX_DECRYPT_BLOCK_SIZE];
     HardReset();
+}
+
+void Media::SetTraceLogger(TraceLogger* trace_logger)
+{
+    m_trace_logger = trace_logger;
+    if (IsValidPointer(m_eeprom_instance))
+        m_eeprom_instance->SetTraceLogger(trace_logger);
 }
 
 void Media::Reset()
@@ -108,6 +122,7 @@ void Media::HardReset()
     m_rom_size = 0;
     m_ready = false;
     m_is_in_game_database = false;
+    m_game_database_name = NULL;
     m_file_path[0] = 0;
     m_file_directory[0] = 0;
     m_file_name[0] = 0;
@@ -140,6 +155,8 @@ void Media::HardReset()
     m_homebrew_size = 0;
     m_epyx_headerless = 0;
     m_crc = 0;
+    m_softpatch_applied = false;
+    m_softpatch_path[0] = 0;
 }
 
 void Media::ReleaseCartBankRAM()
@@ -329,7 +346,17 @@ void Media::SetupBanks()
         m_required_rom_size = SetupClassicBanks();
 }
 
-bool Media::LoadFromFile(const char* path)
+bool Media::IsSoftpatchApplied() const
+{
+    return m_softpatch_applied;
+}
+
+const char* Media::GetSoftpatchPath() const
+{
+    return m_softpatch_path;
+}
+
+bool Media::LoadFromFile(const char* path, bool softpatching)
 {
     using namespace std;
 
@@ -373,9 +400,9 @@ bool Media::LoadFromFile(const char* path)
                 if (!is_empty)
                 {
                     if (strcmp(m_file_extension, "zip") == 0)
-                        m_ready = LoadFromZipFile((u8*)(buffer), size);
+                        m_ready = LoadFromZipFile((u8*)(buffer), size, softpatching);
                     else
-                        m_ready = LoadFromBuffer((u8*)(buffer), size, path);
+                        m_ready = LoadFromBufferWithSoftpatch((u8*)(buffer), size, path, softpatching);
                 }
             }
             else
@@ -400,10 +427,41 @@ bool Media::LoadFromFile(const char* path)
         m_ready = false;
     }
 
-    if (!m_ready)
+    if (!m_ready && m_softpatch_applied)
+    {
+        Error("Media rejected after applying IPS patch %s. Loading unpatched media.",
+            m_softpatch_path);
+        return LoadFromFile(path, false);
+    }
+    else if (!m_ready)
         HardReset();
 
     return m_ready;
+}
+
+bool Media::LoadFromBufferWithSoftpatch(const u8* buffer, int size, const char* path,
+    bool softpatching)
+{
+    u8* patched_buffer = NULL;
+    int patched_size = 0;
+    char patch_path[4096] = {};
+    bool patched = softpatching && ips_apply_patch(m_file_path, buffer, size,
+        &patched_buffer, &patched_size, patch_path, sizeof(patch_path));
+
+    bool loaded;
+    if (patched)
+        loaded = LoadFromBuffer(patched_buffer, patched_size, path);
+    else
+        loaded = LoadFromBuffer(buffer, size, path);
+
+    m_softpatch_applied = patched;
+    if (m_softpatch_applied)
+        strncpy_fit(m_softpatch_path, patch_path, sizeof(m_softpatch_path));
+    else
+        m_softpatch_path[0] = 0;
+
+    SafeDeleteArray(patched_buffer);
+    return loaded;
 }
 
 bool Media::LoadFromBuffer(const u8* buffer, int size, const char* path)
@@ -448,10 +506,18 @@ bool Media::LoadFromBuffer(const u8* buffer, int size, const char* path)
         DefaultLynxHeader();
     }
 
+    if (m_rom_size > GLYNX_MAX_ROM_SIZE)
+    {
+        Error("Unable to load ROM: Size %u exceeds maximum supported size %u",
+            m_rom_size, (u32)GLYNX_MAX_ROM_SIZE);
+        HardReset();
+        return false;
+    }
+
     Log("ROM Size: %d KB, %d bytes (0x%0X)", m_rom_size / 1024, m_rom_size, m_rom_size);
 
     u32 loaded_rom_size = m_rom_size;
-    m_rom = new u8[m_rom_size];
+    m_rom = new u8[GLYNX_MAX_ROM_SIZE];
     memcpy(m_rom, buffer, m_rom_size);
 
     m_crc = CalculateCRC32(0, m_rom, m_rom_size);
@@ -459,14 +525,18 @@ bool Media::LoadFromBuffer(const u8* buffer, int size, const char* path)
 
     GatherInfoFromDB();
 
+    if (m_rom_size > GLYNX_MAX_ROM_SIZE)
+    {
+        Error("Unable to load ROM: Size %u exceeds maximum supported size %u",
+            m_rom_size, (u32)GLYNX_MAX_ROM_SIZE);
+        HardReset();
+        return false;
+    }
+
     if (m_rom_size > loaded_rom_size)
     {
         Debug("ROM buffer too small (%d bytes) for database size (%d bytes), padding with 0xFF", loaded_rom_size, m_rom_size);
-        u8* padded = new u8[m_rom_size];
-        memcpy(padded, m_rom, loaded_rom_size);
-        memset(padded + loaded_rom_size, 0xFF, m_rom_size - loaded_rom_size);
-        SafeDeleteArray(m_rom);
-        m_rom = padded;
+        memset(m_rom + loaded_rom_size, 0xFF, m_rom_size - loaded_rom_size);
     }
 
     if (m_type == MEDIA_LYNX)
@@ -475,14 +545,18 @@ bool Media::LoadFromBuffer(const u8* buffer, int size, const char* path)
 
         u32 required_size = m_required_rom_size;
 
+        if (required_size > GLYNX_MAX_ROM_SIZE)
+        {
+            Error("Unable to load ROM: Required bank size %u exceeds maximum supported size %u",
+                required_size, (u32)GLYNX_MAX_ROM_SIZE);
+            HardReset();
+            return false;
+        }
+
         if (required_size > m_rom_size)
         {
             Debug("ROM buffer too small (%d bytes) for banks (%d bytes), padding with 0xFF", m_rom_size, required_size);
-            u8* padded = new u8[required_size];
-            memcpy(padded, m_rom, m_rom_size);
-            memset(padded + m_rom_size, 0xFF, required_size - m_rom_size);
-            SafeDeleteArray(m_rom);
-            m_rom = padded;
+            memset(m_rom + m_rom_size, 0xFF, required_size - m_rom_size);
             m_rom_size = required_size;
             SetupBanks();
         }
@@ -608,7 +682,7 @@ GLYNX_Bios_State Media::LoadBiosData(const u8* buffer, int size, const char* pat
     }
 }
 
-bool Media::LoadFromZipFile(const u8* buffer, int size)
+bool Media::LoadFromZipFile(const u8* buffer, int size, bool softpatching)
 {
     Debug("Loading from ZIP file... Size: %d", size);
 
@@ -641,7 +715,7 @@ bool Media::LoadFromZipFile(const u8* buffer, int size)
         string extension = fn.substr(fn.find_last_of(".") + 1);
         transform(extension.begin(), extension.end(), extension.begin(), (int(*)(int)) tolower);
 
-        if ((extension == "lnx") || (extension == "lyx") || (extension == "o"))
+        if ((extension == "lnx") || (extension == "lyx") || (extension == "o") || (extension == "bin"))
         {
             void *p;
             size_t uncomp_size;
@@ -654,7 +728,7 @@ bool Media::LoadFromZipFile(const u8* buffer, int size)
                 return false;
             }
 
-            bool ok = LoadFromBuffer((const u8*) p, (int)uncomp_size, fn.c_str());
+            bool ok = LoadFromBufferWithSoftpatch((const u8*) p, (int)uncomp_size, fn.c_str(), softpatching);
 
             free(p);
             mz_zip_reader_end(&zip_archive);
@@ -671,6 +745,7 @@ void Media::GatherInfoFromDB()
 {
     int i = 0;
     m_is_in_game_database = false;
+    m_game_database_name = NULL;
 
     while(!m_is_in_game_database && (k_game_database[i].title != 0))
     {
@@ -679,6 +754,7 @@ void Media::GatherInfoFromDB()
         if (db_crc == m_crc)
         {
             m_is_in_game_database = true;
+            m_game_database_name = k_game_database[i].title;
             Log("ROM found in database: %s. CRC: %08X", k_game_database[i].title, m_crc);
 
             if (m_is_lnx2)
@@ -1203,7 +1279,7 @@ void Media::ApplyCartridgeHardwareConfiguration()
     }
     else
     {
-        m_game_drive_instance->Reset(false);
+        m_game_drive_instance->Reset(true);
         if (m_active_cartridge_hardware == GLYNX_CARTRIDGE_HARDWARE_EL_CHEAPO_SD)
         {
             m_el_cheapo_sd_instance->Configure(true, m_file_directory,
@@ -1290,7 +1366,7 @@ void Media::LoadState(std::istream& stream, int version)
     }
     if (m_el_cheapo_sd_instance->IsAvailable())
     {
-        if (version == 18)
+        if (version >= 18)
             m_el_cheapo_sd_instance->LoadState(stream);
         else
             m_el_cheapo_sd_instance->Reset(false);

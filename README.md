@@ -8,7 +8,7 @@
 [![License](https://img.shields.io/github/license/drhelius/Gearlynx)](https://github.com/drhelius/Gearlynx/blob/main/LICENSE)
 [![Twitter Follow](https://img.shields.io/twitter/follow/drhelius)](https://x.com/drhelius)
 
-Gearlynx is a very accurate, cross-platform Atari Lynx emulator written in C++ that runs on Windows, macOS, Linux, BSD and RetroArch, with an embedded MCP server for debugging and tooling.
+Gearlynx is a very accurate, cross-platform Atari Lynx emulator written in C++ that runs on Windows, macOS, Linux, BSD and RetroArch, with an embedded MCP server for AI debugging and development.
 
 This is an open source project with its ongoing development made possible thanks to the support by these awesome [backers](backers.md). If you find it useful, please consider [sponsoring](https://github.com/sponsors/drhelius).
 
@@ -30,11 +30,11 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
     <tr>
       <td rowspan="2"><strong>Windows</strong></td>
       <td>Desktop x64</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.22/Gearlynx-1.2.22-desktop-windows-x64.zip">Gearlynx-1.2.22-desktop-windows-x64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.31/Gearlynx-1.2.31-desktop-windows-x64.zip">Gearlynx-1.2.31-desktop-windows-x64.zip</a></td>
     </tr>
     <tr>
       <td>Desktop ARM64</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.22/Gearlynx-1.2.22-desktop-windows-arm64.zip">Gearlynx-1.2.22-desktop-windows-arm64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.31/Gearlynx-1.2.31-desktop-windows-arm64.zip">Gearlynx-1.2.31-desktop-windows-arm64.zip</a></td>
     </tr>
     <tr>
       <td rowspan="3"><strong>macOS</strong></td>
@@ -43,11 +43,11 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
     </tr>
     <tr>
       <td>Desktop Apple Silicon</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.22/Gearlynx-1.2.22-desktop-macos-arm64.zip">Gearlynx-1.2.22-desktop-macos-arm64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.31/Gearlynx-1.2.31-desktop-macos-arm64.zip">Gearlynx-1.2.31-desktop-macos-arm64.zip</a></td>
     </tr>
     <tr>
       <td>Desktop Intel</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.22/Gearlynx-1.2.22-desktop-macos-intel.zip">Gearlynx-1.2.22-desktop-macos-intel.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.31/Gearlynx-1.2.31-desktop-macos-intel.zip">Gearlynx-1.2.31-desktop-macos-intel.zip</a></td>
     </tr>
     <tr>
       <td rowspan="5"><strong>Linux</strong></td>
@@ -60,15 +60,15 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
     </tr>
     <tr>
       <td>Desktop Ubuntu 24.04 x64</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.22/Gearlynx-1.2.22-desktop-ubuntu24.04-x64.zip">Gearlynx-1.2.22-desktop-ubuntu24.04-x64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.31/Gearlynx-1.2.31-desktop-ubuntu24.04-x64.zip">Gearlynx-1.2.31-desktop-ubuntu24.04-x64.zip</a></td>
     </tr>
     <tr>
       <td>Desktop Ubuntu 22.04 x64</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.22/Gearlynx-1.2.22-desktop-ubuntu22.04-x64.zip">Gearlynx-1.2.22-desktop-ubuntu22.04-x64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.31/Gearlynx-1.2.31-desktop-ubuntu22.04-x64.zip">Gearlynx-1.2.31-desktop-ubuntu22.04-x64.zip</a></td>
     </tr>
     <tr>
       <td>Desktop Ubuntu 24.04 ARM64</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.22/Gearlynx-1.2.22-desktop-ubuntu24.04-arm64.zip">Gearlynx-1.2.22-desktop-ubuntu24.04-arm64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.31/Gearlynx-1.2.31-desktop-ubuntu24.04-arm64.zip">Gearlynx-1.2.31-desktop-ubuntu24.04-arm64.zip</a></td>
     </tr>
     <tr>
       <td><strong>MCPB</strong></td>
@@ -97,10 +97,11 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
 
 - Very accurate emulation supporting the entire commercial Atari Lynx catalog and most homebrew and demos.
 - User selectable Lynx I or Lynx II emulation.
-- Compressed and homebrew ROM support (lnx, lyx, o, and zip).
+- Compressed and homebrew ROM support (lnx, lyx, o, bin, and zip).
 - Save states with preview and rewind support.
 - Run-ahead support to reduce input latency.
 - Very accurate audio emulation with configurable low-pass filter (mimics original Lynx audio hardware).
+- ComLynx multiplayer for up to eight emulator instances on the same machine.
 - VGM recorder.
 - Internal database for automatic ROM detection and hardware selection if `Auto` options are selected.
 - Bank switching (BANK1 + AUDIN) and EEPROM.
@@ -144,23 +145,24 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
 gearlynx [options] [game_file] [symbol_file]
 
 Arguments:
-  [game_file]              Game file: accepts ROMs (.lyx, .lnx, .o) or ZIP (.zip)
-  [symbol_file]            Optional symbol file for debugging
+  [game_file]                 Game file: accepts ROMs (.lyx, .lnx, .o) or ZIP (.zip)
+  [symbol_file]               Optional symbol file for debugging
 
 Options:
-  -f, --fullscreen         Start in fullscreen mode
-  -w, --windowed           Start in windowed mode with menu visible
-      --mcp-stdio          Auto-start MCP server with stdio transport
-      --mcp-http           Auto-start MCP server with HTTP transport
-      --mcp-router         Enable compact MCP tool routing
-      --mcp-http-address A HTTP bind address (default: 127.0.0.1)
-      --mcp-http-port N    HTTP port for MCP server (default: 7777)
-      --debug-monitor      Start debug monitor TCP server (default port: 6502)
-      --debug-monitor-port N Debug monitor port (default: 6502)
-      --headless           Run without GUI (requires --mcp-stdio, --mcp-http, or --debug-monitor)
-        --portable           Store configuration and user data beside the application
-  -v, --version            Display version information
-  -h, --help               Display this help message
+  -f, --fullscreen            Start in fullscreen mode
+  -w, --windowed              Start in windowed mode with menu visible
+      --mcp-stdio             Auto-start MCP server with stdio transport
+      --mcp-http              Auto-start MCP server with HTTP transport
+      --mcp-router            Enable compact MCP tool routing
+      --mcp-http-address A    HTTP bind address (default: 127.0.0.1)
+      --mcp-http-port N       HTTP port for MCP server (default: 7777)
+      --debug-monitor         Start debug monitor TCP server (default port: 6502)
+      --debug-monitor-port N  Debug monitor port, 1-65534 (default: 6502)
+      --comlynx-join N        Join local ComLynx shared session 1-255
+      --headless              Run without GUI (requires MCP, debug monitor, or ComLynx)
+      --portable              Store configuration and user data beside the application
+  -v, --version               Display version information
+  -h, --help                  Display this help message
 ```
 
 ### MCP Server
@@ -168,6 +170,10 @@ Options:
 Gearlynx includes a [Model Context Protocol](https://modelcontextprotocol.io/introduction) (MCP) server that enables AI-assisted debugging through AI agents like GitHub Copilot, Claude, Codex and similar. The server provides tools for execution control, memory inspection, breakpoints, disassembly, hardware status, rewind and more. STDIO and HTTP transports are supported, with STDIO preferred.
 
 For complete setup instructions and tool documentation, see [MCP_README.md](MCP_README.md).
+
+### ComLynx Multiplayer
+
+Choose the same session number in the `ComLynx` menu on every instance and select `Connect`, or start each process with `--comlynx-join N`. Sessions use local shared memory and support up to eight peers on one computer. Independent instances should use separate application copies or `--portable` data directories so configuration, saves, and single-instance handling do not conflict.
 
 ### VS Code Extension
 

@@ -311,9 +311,9 @@ void McpServer::HandleInitialize(const json& request)
         }},
         {"serverInfo", {
             {"name", "gearlynx-mcp-server"},
-            {"title", "Gearlynx MCP Server"},
+            {"title", GLYNX_TITLE " MCP Server"},
             {"version", GLYNX_VERSION},
-            {"description", "Debug/control Gearlynx Atari Lynx: execution, breakpoints, IRQ timers, memory, 6502 CPU, Mikey, Suzy, UART, cartridge, EEPROM, LCD, disassembly, symbols, sprites, frame buffers, save states, rewind, input, screenshots."}
+            {"description", "Debug/control " GLYNX_TITLE " Atari Lynx: execution, breakpoints, IRQ timers, memory, 6502 CPU, Mikey, Suzy, UART, cartridge, EEPROM, LCD, disassembly, symbols, sprites, frame buffers, save states, rewind, input, screenshots."}
         }}
     };
 
@@ -399,7 +399,7 @@ json McpServer::BuildToolList()
     tools.push_back({
         {"name", "debug_step_frame"},
         {"title", "Step Frame"},
-        {"description", "Run one or more Atari Lynx video frames to VBlank."},
+        {"description", "Run one or more Atari Lynx video frames to VBlank. Default mode is async; use mode sync to wait until all requested frames complete."},
         {"annotations", {{"readOnlyHint", false}, {"destructiveHint", true}, {"idempotentHint", false}, {"openWorldHint", false}}},
         {"inputSchema", {
             {"type", "object"},
@@ -409,6 +409,11 @@ json McpServer::BuildToolList()
                     {"description", "Number of frames to step. Default 1."},
                     {"minimum", 1},
                     {"maximum", 1000}
+                }},
+                {"mode", {
+                    {"type", "string"},
+                    {"description", "async returns after scheduling; sync waits until all requested frames complete. Default async."},
+                    {"enum", json::array({"async", "sync"})}
                 }}
             }},
             {"additionalProperties", false}
@@ -429,7 +434,7 @@ json McpServer::BuildToolList()
     tools.push_back({
         {"name", "debug_get_status"},
         {"title", "Get Debug Status"},
-        {"description", "Read debugger state: paused, breakpoint hit, current PC."},
+        {"description", "Read debugger state: paused, breakpoint hit, current PC, total emulated cycles."},
         {"annotations", {{"readOnlyHint", true}, {"destructiveHint", false}, {"idempotentHint", true}, {"openWorldHint", false}}},
         {"inputSchema", {
             {"type", "object"},
@@ -845,6 +850,17 @@ json McpServer::BuildToolList()
         {"title", "Get UART Status"},
         {"description", "Read UART/ComLynx serial status."},
         {"annotations", {{"readOnlyHint", true}, {"destructiveHint", false}, {"idempotentHint", true}, {"openWorldHint", false}}},
+        {"inputSchema", {
+            {"type", "object"},
+            {"additionalProperties", false}
+        }}
+    });
+
+    tools.push_back({
+        {"name", "reset_comlynx_metrics"},
+        {"title", "Reset ComLynx Metrics"},
+        {"description", "Reset ComLynx transport and stall diagnostics."},
+        {"annotations", {{"readOnlyHint", false}, {"destructiveHint", false}, {"idempotentHint", true}, {"openWorldHint", false}}},
         {"inputSchema", {
             {"type", "object"},
             {"additionalProperties", false}
@@ -1604,9 +1620,9 @@ json McpServer::BuildToolList()
     });
 
     tools.push_back({
-        {"name", "memory_find_bytes"},
-        {"title", "Find Byte Sequence in Memory"},
-        {"description", "Find consecutive hex byte sequence in memory; return addresses."},
+        {"name", "memory_find"},
+        {"title", "Find Bytes or Text in Memory"},
+        {"description", "Find consecutive hex bytes or text in memory; return addresses."},
         {"annotations", {{"readOnlyHint", true}, {"destructiveHint", false}, {"idempotentHint", true}, {"openWorldHint", false}}},
         {"inputSchema", {
             {"type", "object"},
@@ -1617,10 +1633,27 @@ json McpServer::BuildToolList()
                 }},
                 {"hex_bytes", {
                     {"type", "string"},
-                    {"description", "Hex byte pairs to find, e.g. '04E5FF32' (spaces optional)"}
+                    {"description", "Hex byte pairs to find, e.g. '04E5FF32' (spaces optional). "
+                        "Use either hex_bytes or text."},
+                    {"minLength", 1}
+                }},
+                {"text", {
+                    {"type", "string"},
+                    {"description", "UTF-8 text to find. Use either text or hex_bytes."},
+                    {"minLength", 1}
+                }},
+                {"case_sensitive", {
+                    {"type", "boolean"},
+                    {"description", "Match text case. Default true; false folds ASCII letters. "
+                        "Ignored for hex_bytes."}
                 }}
             }},
-            {"required", json::array({"area", "hex_bytes"})}
+            {"required", json::array({"area"})},
+            {"oneOf", json::array({
+                {{"required", json::array({"hex_bytes"})}},
+                {{"required", json::array({"text"})}}
+            })},
+            {"additionalProperties", false}
         }}
     });
 
@@ -1634,12 +1667,11 @@ json McpServer::BuildToolList()
             {"properties", {
                 {"start", {
                     {"type", "integer"},
-                    {"description", "Start index; 0 oldest, omit for latest."},
-                    {"minimum", 0}
+                    {"description", "Absolute trace sequence, or a negative value to read that many entries from the retained tail (omit for latest 100)"}
                 }},
                 {"count", {
                     {"type", "integer"},
-                    {"description", "Entry count; default 100, max 1000."},
+                    {"description", "Entries to return (default 100, max 1000)"},
                     {"minimum", 1},
                     {"maximum", 1000}
                 }}
@@ -1651,7 +1683,7 @@ json McpServer::BuildToolList()
     tools.push_back({
         {"name", "set_trace_log"},
         {"title", "Set Trace Logger"},
-        {"description", "Enable/disable trace log; filters CPU, IRQ, Suzy, Mikey, UART, audio, cart, debug messages; debug_output maps $FDC0-$FDC4 text registers."},
+        {"description", "Enable/disable trace logging to memory or disk; configure capacity, file limit, output directory, event filters, and debug output."},
         {"annotations", {{"readOnlyHint", false}, {"destructiveHint", true}, {"idempotentHint", true}, {"openWorldHint", false}}},
         {"inputSchema", {
             {"type", "object"},
@@ -1662,54 +1694,52 @@ json McpServer::BuildToolList()
                 }},
                 {"debug_output", {
                     {"type", "boolean"},
-                    {"description", "Enable $FDC0-$FDC4 debug output text registers. Default false."}
+                    {"description", "Enable $FDC0-$FDC4 debug output text registers; omission preserves current state."}
+                }},
+                {"output", {
+                    {"type", "string"},
+                    {"description", "Trace destination. Defaults to memory when starting a stopped logger."},
+                    {"enum", json::array({"memory", "disk"})}
+                }},
+                {"memory_size", {
+                    {"type", "string"},
+                    {"description", "Maximum entries retained in memory mode."},
+                    {"enum", json::array({"100K", "500K", "1M", "2M", "5M"})}
+                }},
+                {"disk_size", {
+                    {"type", "string"},
+                    {"description", "Maximum disk trace file size."},
+                    {"enum", json::array({"10MB", "50MB", "100MB", "250MB", "500MB", "1GB", "unbounded"})}
+                }},
+                {"output_path", {
+                    {"type", "string"},
+                    {"description", "Directory for the automatically named disk trace file."}
                 }},
                 {"filters", {
-                    {"type", "object"},
-                    {"description", "Trace event filters; omitted values default true."},
-                    {"properties", {
-                        {"cpu", {
-                            {"type", "boolean"},
-                            {"description", "CPU instructions. Default true."}
-                        }},
-                        {"cpu_irq", {
-                            {"type", "boolean"},
-                            {"description", "IRQ events. Default true."}
-                        }},
-                        {"suzy_math", {
-                            {"type", "boolean"},
-                            {"description", "Suzy multiply/divide operations. Default true."}
-                        }},
-                        {"suzy_sprites", {
-                            {"type", "boolean"},
-                            {"description", "Suzy sprite rendering. Default true."}
-                        }},
-                        {"suzy_input", {
-                            {"type", "boolean"},
-                            {"description", "Suzy input reads. Default true."}
-                        }},
-                        {"mikey_timers", {
-                            {"type", "boolean"},
-                            {"description", "Mikey timer events. Default true."}
-                        }},
-                        {"mikey_uart", {
-                            {"type", "boolean"},
-                            {"description", "Mikey UART TX/RX. Default true."}
-                        }},
-                        {"mikey_audio", {
-                            {"type", "boolean"},
-                            {"description", "Mikey audio register writes. Default true."}
-                        }},
-                        {"cart", {
-                            {"type", "boolean"},
-                            {"description", "Cartridge shift register. Default true."}
-                        }},
-                        {"debug_messages", {
-                            {"type", "boolean"},
-                            {"description", "Game debug messages via $FDC0-$FDC4. Default true."}
-                        }}
-                    }},
-                    {"additionalProperties", false}
+                    {"type", "array"},
+                    {"description", "Unique exact filters; omission selects CPU instructions and IRQs."},
+                    {"minItems", 1},
+                    {"maxItems", 37},
+                    {"uniqueItems", true},
+                    {"items", {
+                        {"type", "string"},
+                        {"enum", json::array({
+                            "cpu.instructions", "cpu.irqs",
+                            "suzy.math.operations", "suzy.math.completions",
+                            "suzy.sprites.engine", "suzy.sprites.scbs", "suzy.sprites.skips",
+                            "suzy.sprites.collisions", "suzy.sprites.rows", "suzy.bus",
+                            "suzy.input.reads", "mikey.timers.registers",
+                            "mikey.timers.underflows", "mikey.timers.irqs", "mikey.timers.links",
+                            "mikey.interrupts", "mikey.display.registers", "mikey.display.palette",
+                            "mikey.display.dma", "mikey.display.timing", "mikey.audio.channels",
+                            "mikey.audio.mixer", "mikey.audio.clocks", "mikey.uart.registers",
+                            "mikey.uart.transfers", "mikey.uart.irqs", "mikey.uart.problems",
+                            "mikey.uart.breaks", "mikey.uart.comlynx", "redeye.packets",
+                            "redeye.problems", "cartridge.address", "cartridge.accesses",
+                            "cartridge.eeprom", "cartridge.audin", "cartridge.storage",
+                            "debug.messages"
+                        })}
+                    }}
                 }}
             }},
             {"required", json::array({"enabled"})},
@@ -2112,7 +2142,7 @@ json McpServer::ExecuteCommand(const std::string& toolName, const json& argument
             return {{"error", "Invalid frames value (must be 1-1000)"}};
 
         m_debugAdapter.StepFrame(frames);
-        return {{"success", true}, {"frames", frames}};
+        return {{"success", true}, {"mode", "async"}, {"pending", true}, {"frames", frames}};
     }
     else if (normalizedTool == "debug_reset")
     {
@@ -2499,6 +2529,10 @@ json McpServer::ExecuteCommand(const std::string& toolName, const json& argument
     {
         return m_debugAdapter.GetUARTStatus();
     }
+    else if (normalizedTool == "reset_comlynx_metrics")
+    {
+        return m_debugAdapter.ResetComLynxMetrics();
+    }
     else if (normalizedTool == "get_cart_status")
     {
         return m_debugAdapter.GetCartStatus();
@@ -2755,44 +2789,39 @@ json McpServer::ExecuteCommand(const std::string& toolName, const json& argument
         std::string data_type = arguments.value("data_type", "unsigned");
         return m_debugAdapter.MemorySearch(area, op, compare_type, compare_value, data_type);
     }
-    else if (normalizedTool == "memory_find_bytes")
+    else if (normalizedTool == "memory_find")
     {
         if (!arguments.contains("area") || !arguments["area"].is_number_integer())
             return {{"error", "area is required"}};
-        if (!arguments.contains("hex_bytes") || !arguments["hex_bytes"].is_string())
-            return {{"error", "hex_bytes is required"}};
+        if (arguments.contains("hex_bytes") && !arguments["hex_bytes"].is_string())
+            return {{"error", "hex_bytes must be a string"}};
+        if (arguments.contains("text") && !arguments["text"].is_string())
+            return {{"error", "text must be a string"}};
+        if (arguments.contains("case_sensitive") && !arguments["case_sensitive"].is_boolean())
+            return {{"error", "case_sensitive must be a boolean"}};
+
+        bool has_hex_bytes = arguments.contains("hex_bytes");
+        bool has_text = arguments.contains("text");
+        if (has_hex_bytes == has_text)
+            return {{"error", "Exactly one of hex_bytes or text is required"}};
 
         int area = arguments["area"].get<int>();
-        std::string hex_bytes = arguments["hex_bytes"].get<std::string>();
-        return m_debugAdapter.MemoryFindBytes(area, hex_bytes);
+        std::string value;
+        if (has_text)
+            value = arguments["text"].get<std::string>();
+        else
+            value = arguments["hex_bytes"].get<std::string>();
+        bool case_sensitive = arguments.value("case_sensitive", true);
+        return m_debugAdapter.MemoryFind(area, value, has_text, case_sensitive);
     }
     else if (normalizedTool == "get_trace_log")
     {
-        int start = arguments.value("start", -1);
+        s64 start = arguments.value("start", (s64)-100);
         int count = arguments.value("count", 100);
         return m_debugAdapter.GetTraceLog(start, count);
     }
     else if (normalizedTool == "set_trace_log")
-    {
-        bool enabled = arguments["enabled"];
-        u32 flags = 0;
-        if (enabled)
-        {
-            json filters = arguments.value("filters", json::object());
-            if (filters.value("cpu", true)) flags |= TRACE_FLAG_CPU;
-            if (filters.value("cpu_irq", true)) flags |= TRACE_FLAG_CPU_IRQ;
-            if (filters.value("suzy_math", true)) flags |= TRACE_FLAG_SUZY_MATH;
-            if (filters.value("suzy_sprites", true)) flags |= TRACE_FLAG_SUZY_SPRITE;
-            if (filters.value("suzy_input", true)) flags |= TRACE_FLAG_SUZY_INPUT;
-            if (filters.value("mikey_timers", true)) flags |= TRACE_FLAG_MIKEY_TIMER;
-            if (filters.value("mikey_uart", true)) flags |= TRACE_FLAG_MIKEY_UART;
-            if (filters.value("mikey_audio", true)) flags |= TRACE_FLAG_MIKEY_AUDIO;
-            if (filters.value("cart", true)) flags |= TRACE_FLAG_CART_SHIFT;
-            if (filters.value("debug_messages", true)) flags |= TRACE_FLAG_DEBUG_MSG;
-        }
-        bool debug_output = arguments.value("debug_output", false);
-        return m_debugAdapter.SetTraceLog(enabled, flags, debug_output);
-    }
+        return m_debugAdapter.SetTraceLog(arguments);
     else if (normalizedTool == "get_rewind_status")
     {
         return m_debugAdapter.GetRewindStatus();
@@ -3050,4 +3079,3 @@ void McpServer::HandleResourcesRead(const json& request)
 
     SendResponse(response);
 }
-

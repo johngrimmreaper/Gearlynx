@@ -238,9 +238,9 @@ void retro_set_environment(retro_environment_t cb)
     static const struct retro_system_content_info_override content_overrides[] =
     {
         {
-            "lnx|lyx|o",  // extensions
-            false,        // need_fullpath
-            false         // persistent_data
+            "lnx|lyx|o|bin",  // extensions
+            false,            // need_fullpath
+            false             // persistent_data
         },
         { NULL, false, false }
     };
@@ -340,15 +340,18 @@ void retro_set_controller_port_device(unsigned port, unsigned device)
 void retro_get_system_info(struct retro_system_info *info)
 {
     memset(info, 0, sizeof(*info));
-    info->library_name     = "Gearlynx";
+    info->library_name     = GLYNX_TITLE;
     info->library_version  = GLYNX_VERSION;
     info->need_fullpath    = false;
-    info->valid_extensions = "lnx|lyx|o";
+    info->valid_extensions = "lnx|lyx|o|bin";
 }
 
 void retro_get_system_av_info(struct retro_system_av_info *info)
 {
     core->GetRuntimeInfo(runtime_info);
+
+    if (runtime_info.frame_time > 0.0f)
+        current_fps = 1000.0f / runtime_info.frame_time;
 
     info->geometry.base_width   = runtime_info.screen_width;
     info->geometry.base_height  = runtime_info.screen_height;

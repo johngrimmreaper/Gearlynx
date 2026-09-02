@@ -53,6 +53,10 @@ static bool open_bios = false;
 static bool open_bios_warning = false;
 static bool save_debug_settings = false;
 static bool load_debug_settings = false;
+static const ImVec4 service_comlynx_color(0.39f, 0.58f, 0.93f, 1.0f);
+static const ImVec4 service_mcp_http_color(0.10f, 0.90f, 0.10f, 1.0f);
+static const ImVec4 service_mcp_stdio_color(0.90f, 0.70f, 0.10f, 1.0f);
+static const ImVec4 service_debug_monitor_color(0.20f, 0.70f, 1.0f, 1.0f);
 static ShaderPresetInfo shader_presets[SHADER_PRESET_MAX_DISCOVERED];
 static int shader_preset_count = 0;
 
@@ -66,6 +70,7 @@ static bool shader_parameter_is_integer(const ShaderPresetParameter* parameter);
 static int shader_parameter_round_to_int(float value);
 static void menu_input(void);
 static void menu_audio(void);
+static void menu_comlynx(void);
 static void menu_debug(void);
 static void menu_about(void);
 static void draw_background_color_menu(const char* label, int theme);
@@ -112,6 +117,7 @@ void gui_main_menu(void)
         menu_video();
         menu_input();
         menu_audio();
+        menu_comlynx();
         menu_debug();
         menu_about();
         draw_server_status();
@@ -164,6 +170,11 @@ static void menu_gearlynx(void)
         }
 
         ImGui::Separator();
+        ImGui::MenuItem("Enable Softpatching", "", &config_emulator.softpatching);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Automatically applies a matching .ips patch next to the ROM when loading.");
+
+        ImGui::Separator();
         
         if (ImGui::MenuItem("Reset", config_hotkeys[config_HotkeyIndex_Reset].str, false, media_actions_enabled))
         {
@@ -177,12 +188,14 @@ static void menu_gearlynx(void)
 
         ImGui::Separator();
 
-        if (ImGui::MenuItem("Fast Forward", config_hotkeys[config_HotkeyIndex_FFWD].str, &config_emulator.ffwd, media_actions_enabled))
+        bool comlynx_active = emu_comlynx_is_active();
+
+        if (ImGui::MenuItem("Fast Forward", config_hotkeys[config_HotkeyIndex_FFWD].str, &config_emulator.ffwd, media_actions_enabled && !comlynx_active))
         {
             gui_action_ffwd();
         }
 
-        if (ImGui::BeginMenu("Fast Forward Speed"))
+        if (ImGui::BeginMenu("Fast Forward Speed", !comlynx_active))
         {
             ImGui::PushItemWidth(100.0f);
             ImGui::Combo("##fwd", &config_emulator.ffwd_speed, "X 1.5\0X 2\0X 2.5\0X 3\0Unlimited\0\0");
@@ -190,7 +203,7 @@ static void menu_gearlynx(void)
             ImGui::EndMenu();
         }
 
-        if (ImGui::BeginMenu("Rewind"))
+        if (ImGui::BeginMenu("Rewind", !comlynx_active))
         {
             if (ImGui::MenuItem("Enabled", config_hotkeys[config_HotkeyIndex_Rewind].str, &config_rewind.enabled))
                 rewind_reset();
@@ -202,7 +215,7 @@ static void menu_gearlynx(void)
             ImGui::EndMenu();
         }
 
-        if (ImGui::BeginMenu("Run-Ahead"))
+        if (ImGui::BeginMenu("Run-Ahead", !comlynx_active))
         {
             ImGui::PushItemWidth(140.0f);
             ImGui::Combo("##runahead", &config_emulator.runahead, "Disabled\0" "1 Frame\0" "2 Frames\0" "3 Frames\0\0");
@@ -241,7 +254,7 @@ static void menu_gearlynx(void)
             save_state = true;
         }
 
-        if (ImGui::MenuItem("Load State From...", "", false, media_actions_enabled))
+        if (ImGui::MenuItem("Load State From...", "", false, media_actions_enabled && !comlynx_active))
         {
             open_state = true;
         }
@@ -268,7 +281,7 @@ static void menu_gearlynx(void)
             emu_save_state_slot(config_emulator.save_slot + 1);
         }
 
-        if (ImGui::MenuItem("Load State", config_hotkeys[config_HotkeyIndex_LoadState].str, false, media_actions_enabled))
+        if (ImGui::MenuItem("Load State", config_hotkeys[config_HotkeyIndex_LoadState].str, false, media_actions_enabled && !comlynx_active))
         {
             std::string message("Loading state from slot ");
             message += std::to_string(config_emulator.save_slot + 1);
@@ -392,7 +405,7 @@ static void menu_emulator(void)
             ImGui::Separator();
             if (emu_get_core()->GetMedia()->IsBiosValid())
             {
-                ImGui::TextColored(ImVec4(0.10f, 0.90f, 0.10f, 1.0f), "Valid BIOS");
+                ImGui::TextColored(service_mcp_http_color, "Valid BIOS");
             }
             else
             {
@@ -664,7 +677,7 @@ static void menu_video(void)
             ImGui::PushItemWidth(250.0f);
             ImGui::Combo("##scale", &config_video.scale, "Integer Scale (Auto)\0Integer Scale (Manual)\0Scale to Window Height\0Scale to Window Width & Height\0\0");
             if (config_video.scale == 1)
-                ImGui::SliderInt("##scale_manual", &config_video.scale_manual, 1, 10);
+                ImGui::SliderInt("##scale_manual", &config_video.scale_manual, 1, 20);
             ImGui::PopItemWidth();
             ImGui::EndMenu();
         }
@@ -693,11 +706,12 @@ static void menu_video(void)
 
         if (ImGui::BeginMenu("Vertical Sync"))
         {
-            ImGui::PushItemWidth(240.0f);
 #if defined(_WIN32)
-            if (ImGui::Combo("##sync_mode", &config_video.sync_mode, "Disabled\0Fixed (60 Hz, 120 Hz, 240 Hz)\0Variable Refresh Rate (VRR)\0\0"))
+            ImGui::PushItemWidth(220.0f);
+            if (ImGui::Combo("##sync_mode", &config_video.sync_mode, "Disabled\0Fixed Vertical Sync\0Variable Refresh Rate (VRR)\0\0"))
 #else
-            if (ImGui::Combo("##sync_mode", &config_video.sync_mode, "Disabled\0Fixed (60 Hz, 120 Hz, 240 Hz)\0\0"))
+            ImGui::PushItemWidth(100.0f);
+            if (ImGui::Combo("##sync_mode", &config_video.sync_mode, "Disabled\0Enabled\0\0"))
 #endif
             {
                 if (config_video.sync_mode != config_VideoSync_Disabled)
@@ -710,19 +724,18 @@ static void menu_video(void)
             }
             ImGui::PopItemWidth();
 
+#if defined(_WIN32)
             if (ImGui::IsItemHovered())
             {
                 ImGui::BeginTooltip();
                 ImGui::Text("Disabled: do not synchronize presentation to the monitor.");
-                ImGui::Text("Fixed: use normal VSync for 60 Hz, 120 Hz, and 240 Hz displays.");
-#if defined(_WIN32)
+                ImGui::Text("Fixed Vertical Sync: use normal VSync.");
                 ImGui::Text("VRR: present at the Lynx frame rate.");
-                ImGui::Text("VRR requires fullscreen, a VRR display, and G-SYNC,");
+                ImGui::Text("\nVRR requires fullscreen, a VRR display, and G-SYNC,");
                 ImGui::Text("FreeSync, or Adaptive Sync enabled in your monitor and GPU driver settings.");
-#endif
                 ImGui::EndTooltip();
             }
-
+#endif
             ImGui::EndMenu();
         }
 
@@ -1178,7 +1191,8 @@ static void menu_debug(void)
 
         ImGui::Separator();
 
-        if (ImGui::MenuItem("Reload ROM", config_hotkeys[config_HotkeyIndex_ReloadROM].str, false, config_debug.debug && !emu_is_empty()))
+        bool can_reload_rom = !emu_is_empty() || !config_emulator.recent_roms[0].empty();
+        if (ImGui::MenuItem("Reload ROM", config_hotkeys[config_HotkeyIndex_ReloadROM].str, false, config_debug.debug && emu_is_bios_loaded() && can_reload_rom))
         {
             gui_action_reload_rom();
         }
@@ -1209,9 +1223,10 @@ static void menu_debug(void)
             ImGui::Separator();
 
             if (stdio_running)
-                ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.10f, 1.0f), "STDIO mode active");
+                ImGui::TextColored(service_mcp_stdio_color, "STDIO mode active");
             else if (http_running)
-                ImGui::TextColored(ImVec4(0.10f, 0.90f, 0.10f, 1.0f), "Listening on %s:%d", config_emulator.mcp_http_address.c_str(), config_emulator.mcp_tcp_port);
+                ImGui::TextColored(service_mcp_http_color, "Listening on %s:%d",
+                    emu_mcp_get_http_address(), emu_mcp_get_http_port());
             else
                 ImGui::TextColored(ImVec4(0.98f, 0.15f, 0.45f, 1.0f), "Stopped");
 
@@ -1244,7 +1259,7 @@ static void menu_debug(void)
         if (ImGui::BeginMenu("Output Scale", config_debug.debug))
         {
             ImGui::PushItemWidth(200.0f);
-            ImGui::SliderInt("##debug_scale", &config_debug.scale, 1, 10);
+            ImGui::SliderInt("##debug_scale", &config_debug.scale, 1, 20);
             ImGui::PopItemWidth();
             ImGui::EndMenu();
         }
@@ -1267,6 +1282,7 @@ static void menu_debug(void)
             ImGui::MenuItem("Show Color Registers", "", &config_debug.show_mikey_colors);
             ImGui::MenuItem("Show Audio", "", &config_debug.show_psg);
             ImGui::MenuItem("Show UART", "", &config_debug.show_uart);
+            ImGui::MenuItem("Show ComLynx", "", &config_debug.show_comlynx);
             ImGui::EndMenu();
         }
 
@@ -1382,6 +1398,98 @@ static void menu_debug(void)
 #endif
 }
 
+static void menu_comlynx(void)
+{
+    if (!ImGui::BeginMenu("ComLynx"))
+        return;
+
+    gui_in_use = true;
+    ComLynxStatus status = emu_comlynx_get_status();
+    bool active = emu_comlynx_is_active();
+    const ImVec4 error_red(0.98f, 0.15f, 0.45f, 1.0f);
+
+#if defined(__APPLE__)
+    if (ImGui::MenuItem("New " GLYNX_TITLE " Window", "", false, application_can_launch_new_instance()))
+        application_launch_new_instance();
+    ImGui::Separator();
+#endif
+
+    if (ImGui::MenuItem("Connect", NULL, false, !active))
+        emu_comlynx_connect(config_emulator.comlynx_session);
+    if (ImGui::MenuItem("Disconnect", NULL, false, status.mode != ComLynxModeDisabled))
+        emu_comlynx_stop();
+
+    ImGui::Separator();
+
+    switch (status.mode)
+    {
+        case ComLynxModeConnected:
+            ImGui::TextColored(service_comlynx_color, "%s", status.endpoint);
+            ImGui::TextDisabled("Peer %d of %d", status.local_peer_id, status.peer_count);
+            break;
+        case ComLynxModeFault:
+            ImGui::TextColored(error_red, "%s", status.last_error);
+            break;
+        default:
+            ImGui::TextColored(error_red, "Disconnected");
+            break;
+    }
+
+    ImGui::Separator();
+
+    ImGui::BeginDisabled(active);
+
+    ImGui::Text("Session:");
+    ImGui::SameLine(110.0f);
+    ImGui::SetNextItemWidth(60.0f);
+    if (ImGui::InputInt("##comlynx_session", &config_emulator.comlynx_session, 0, 0))
+        config_emulator.comlynx_session = CLAMP(config_emulator.comlynx_session, 1, 255);
+
+    ImGui::EndDisabled();
+
+    ImGui::Separator();
+
+#if defined(_WIN32)
+    const int stall_min = 1000;
+    const int stall_max = 10000;
+    const int stall_step = 250;
+    const int stall_default = 5000;
+#elif defined(__APPLE__)
+    const int stall_min = 50;
+    const int stall_max = 1000;
+    const int stall_step = 50;
+    const int stall_default = 100;
+#else
+    const int stall_min = 50;
+    const int stall_max = 2000;
+    const int stall_step = 50;
+    const int stall_default = 250;
+#endif
+
+    if (ImGui::BeginMenu("Stall Threshold"))
+    {
+        ImGui::PushItemWidth(180.0f);
+        if (SliderIntWithSteps("##comlynx_stall", &config_emulator.comlynx_stall_us,
+            stall_min, stall_max, stall_step, "%d us"))
+        {
+            emu_comlynx_set_normal_barrier_stall_us((u32)config_emulator.comlynx_stall_us);
+        }
+        ImGui::PopItemWidth();
+        if (ImGui::IsItemHovered())
+        {
+            ImGui::BeginTooltip();
+            ImGui::Text("Lower values reduce CPU usage but may cause stalls.");
+            ImGui::Text("Higher values tolerate scheduling delays but use more CPU.");
+            ImGui::NewLine();
+            ImGui::Text("Recommended: %d us", stall_default);
+            ImGui::EndTooltip();
+        }
+        ImGui::EndMenu();
+    }
+
+    ImGui::EndMenu();
+}
+
 static void menu_about(void)
 {
     if (ImGui::BeginMenu("About"))
@@ -1400,16 +1508,26 @@ static void draw_server_status(void)
 {
     bool mcp_running = emu_mcp_is_running();
     bool debug_monitor_running = emu_debug_monitor_is_running();
+    ComLynxStatus comlynx = emu_comlynx_get_status();
+    bool comlynx_active = comlynx.mode == ComLynxModeConnected;
 
-    if (!mcp_running && !debug_monitor_running)
+    if (!mcp_running && !debug_monitor_running && !comlynx_active)
         return;
 
+    char comlynx_status[64];
     char mcp_status[128];
     char debug_monitor_status[64];
+    bool show_comlynx_status = false;
     bool show_mcp_status = false;
     bool show_debug_monitor_status = false;
-    ImVec4 mcp_color(0.10f, 0.90f, 0.10f, 1.0f);
-    ImVec4 debug_monitor_color(0.20f, 0.70f, 1.0f, 1.0f);
+    ImVec4 mcp_color = service_mcp_http_color;
+
+    if (comlynx.mode == ComLynxModeConnected)
+    {
+        snprintf(comlynx_status, sizeof(comlynx_status), "COMLYNX: S%u P%d/%d",
+            comlynx.session, comlynx.local_peer_id, comlynx.peer_count);
+        show_comlynx_status = true;
+    }
 
     if (mcp_running)
     {
@@ -1417,7 +1535,7 @@ static void draw_server_status(void)
         if (transport_mode == 0)
         {
             snprintf(mcp_status, sizeof(mcp_status), "MCP: STDIO");
-            mcp_color = ImVec4(0.90f, 0.70f, 0.10f, 1.0f);
+            mcp_color = service_mcp_stdio_color;
             show_mcp_status = true;
         }
         else if (transport_mode == 1)
@@ -1437,8 +1555,14 @@ static void draw_server_status(void)
     float spacing = style.ItemSpacing.x * 2.0f;
     float text_width = 0.0f;
 
+    if (show_comlynx_status)
+        text_width += ImGui::CalcTextSize(comlynx_status).x;
     if (show_mcp_status)
+    {
+        if (text_width > 0.0f)
+            text_width += spacing;
         text_width += ImGui::CalcTextSize(mcp_status).x;
+    }
     if (show_debug_monitor_status)
     {
         if (text_width > 0.0f)
@@ -1455,14 +1579,21 @@ static void draw_server_status(void)
     ImGui::SameLine(status_x);
     ImGui::AlignTextToFramePadding();
 
+    if (show_comlynx_status)
+        ImGui::TextColored(service_comlynx_color, "%s", comlynx_status);
+
     if (show_mcp_status)
+    {
+        if (show_comlynx_status)
+            ImGui::SameLine(0.0f, spacing);
         ImGui::TextColored(mcp_color, "%s", mcp_status);
+    }
 
     if (show_debug_monitor_status)
     {
-        if (show_mcp_status)
+        if (show_comlynx_status || show_mcp_status)
             ImGui::SameLine(0.0f, spacing);
-        ImGui::TextColored(debug_monitor_color, "%s", debug_monitor_status);
+        ImGui::TextColored(service_debug_monitor_color, "%s", debug_monitor_status);
     }
 }
 

@@ -114,6 +114,7 @@ public:
     json GetSuzyRegisters(u16 address = 0xFFFF);
     json WriteSuzyRegister(u16 address, u8 value);
     json GetUARTStatus();
+    json ResetComLynxMetrics();
     json GetCartStatus();
     json GetEepromStatus();
     json GetScreenshot();
@@ -164,9 +165,12 @@ public:
     json ListMemoryWatches(int area);
     json MemorySearchCapture(int area);
     json MemorySearch(int area, const std::string& op, const std::string& compare_type, int compare_value, const std::string& data_type);
-    json MemoryFindBytes(int area, const std::string& hex_bytes);
-    json GetTraceLog(int start, int count);
-    json SetTraceLog(bool enabled, u32 flags, bool debug_output);
+    json MemoryFind(int area, const std::string& value, bool text, bool case_sensitive);
+    json GetTraceLogLegacy(int start, int count);
+    json GetTraceLog(s64 start, int count);
+    json SetTraceLog(bool enabled, u32 flags, bool debug_output, const std::string& output,
+        const std::string& memory_size, const std::string& disk_size, const std::string& output_path);
+    json SetTraceLog(const json& arguments);
 
     // Rewind
     json GetRewindStatus();

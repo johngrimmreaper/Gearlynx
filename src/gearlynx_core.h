@@ -23,6 +23,7 @@
 #include <iostream>
 #include <fstream>
 #include "common.h"
+#include "comlynx.h"
 
 class Audio;
 class Bus;
@@ -32,6 +33,7 @@ class Media;
 class M6502;
 class Suzy;
 class Mikey;
+class Random;
 class TraceLogger;
 
 class GearlynxCore
@@ -54,8 +56,8 @@ public:
     GearlynxCore();
     ~GearlynxCore();
     void Init(GLYNX_Pixel_Format pixel_format = GLYNX_PIXEL_RGBA8888);
-    bool RunToVBlank(u8* frame_buffer, s16* sample_buffer, int* sample_count, GLYNX_Debug_Run* debug = NULL);
-    bool LoadROM(const char* file_path);
+    bool RunToVBlank(u8* frame_buffer, s16* sample_buffer, int* sample_count, GLYNX_Debug_Run* debug = NULL, bool render = true);
+    bool LoadROM(const char* file_path, bool softpatching = false);
     bool LoadROMFromBuffer(const u8* buffer, int size, const char* file_path = NULL);
     GLYNX_Bios_State LoadBios(const char* file_path);
     GLYNX_Bios_State LoadBiosFromBuffer(const u8* buffer, int size);
@@ -88,16 +90,26 @@ public:
     Bus* GetBus();
     u64 GetTotalCycles();
     TraceLogger* GetTraceLogger();
+    void SetComLynxCallbacks(GLYNX_ComLynx_Publish_Callback publish_callback,
+        GLYNX_ComLynx_Sample_Callback sample_callback,
+        GLYNX_ComLynx_Break_Callback break_callback,
+        GLYNX_ComLynx_Sync_Callback sync_callback, void* user_data);
+    void SetComLynxTurboCallbacks(GLYNX_ComLynx_Turbo_Sample_Callback sample_callback,
+        GLYNX_ComLynx_Turbo_Sync_Callback sync_callback, void* user_data);
+    void SetComLynxCableConnected(bool connected);
+    bool IsComLynxCableConnected() const;
+    u64 GetComLynxCycle() const;
+    void RenderFrameBuffer(u8* frame_buffer);
 
 private:
     void Reset();
     template<bool debugger>
-    bool RunToVBlankTemplate(u8* frame_buffer, s16* sample_buffer, int* sample_count, GLYNX_Debug_Run* debug);
+    bool RunToVBlankTemplate(u8* frame_buffer, s16* sample_buffer, int* sample_count, GLYNX_Debug_Run* debug, bool render);
     void PrepareForHomebrew();
-    void RotateFrameBuffer(u8* frame_buffer, GLYNX_Rotation rotation);
     bool SaveState(std::ostream& stream, size_t& size, bool screenshot);
     bool LoadState(std::istream& stream);
     std::string GetSaveStatePath(const char* path, int index);
+    void SynchronizeComLynx();
 
 private:
     Memory* m_memory;
@@ -108,9 +120,14 @@ private:
     M6502* m_m6502;
     Suzy* m_suzy;
     Mikey* m_mikey;
+    Random* m_random;
     TraceLogger* m_trace_logger;
     bool m_paused;
     u64 m_total_cycles;
+    GLYNX_ComLynx_Sync_Callback m_comlynx_sync_callback;
+    void* m_comlynx_sync_user_data;
+    u64 m_comlynx_next_sync_cycle;
+    u32 m_comlynx_sync_cycles;
 };
 
 #include "gearlynx_core_inline.h"

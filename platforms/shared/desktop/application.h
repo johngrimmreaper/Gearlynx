@@ -22,6 +22,7 @@
 
 #include <string>
 #include <SDL3/SDL.h>
+#include "comlynx.h"
 
 struct ApplicationParams
 {
@@ -35,6 +36,8 @@ struct ApplicationParams
     std::string mcp_http_address = "127.0.0.1";
     bool mcp_http_address_set = false;
     int debug_monitor_port = -1;
+    int comlynx_session = 1;
+    bool comlynx_session_set = false;
 };
 
 #ifdef APPLICATION_IMPORT
@@ -58,6 +61,10 @@ EXTERN void application_trigger_fit_to_content(int width, int height);
 EXTERN void application_refocus_window(void);
 EXTERN void application_update_title_with_rom(const char* rom);
 EXTERN bool application_check_single_instance(const char* rom_file, const char* symbol_file);
+#if defined(__APPLE__)
+EXTERN bool application_can_launch_new_instance(void);
+EXTERN void application_launch_new_instance(void);
+#endif
 
 #undef APPLICATION_IMPORT
 #undef EXTERN

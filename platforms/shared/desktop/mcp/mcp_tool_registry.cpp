@@ -111,6 +111,20 @@ static bool validate_json_schema(const json& value, const json& schema, const st
             error = "Parameter '" + path + "' has too many items";
             return false;
         }
+        if (schema.value("uniqueItems", false))
+        {
+            for (size_t i = 0; i < value.size(); i++)
+            {
+                for (size_t j = i + 1; j < value.size(); j++)
+                {
+                    if (value[i] == value[j])
+                    {
+                        error = "Parameter '" + path + "' must contain unique items";
+                        return false;
+                    }
+                }
+            }
+        }
         if (schema.contains("items") && schema["items"].is_object())
         {
             for (size_t i = 0; i < value.size(); i++)
@@ -221,7 +235,7 @@ static const char* const kMcpMemoryTools[] =
     "list_memory_areas", "read_memory", "write_memory", "select_memory_range",
     "set_memory_selection_value", "get_memory_selection", "add_memory_bookmark",
     "remove_memory_bookmark", "list_memory_bookmarks", "add_memory_watch", "remove_memory_watch",
-    "list_memory_watches", "memory_search_capture", "memory_search", "memory_find_bytes"
+    "list_memory_watches", "memory_search_capture", "memory_search", "memory_find"
 };
 
 static const char* const kMcpCpuTools[] =

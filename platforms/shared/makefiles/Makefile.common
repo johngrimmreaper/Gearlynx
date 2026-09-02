@@ -1,7 +1,7 @@
 define HEADER
    ____                 _                   
   / ___| ___  __ _ _ __| |_   _ _ __ __  __ 
- | |  _ / _ \/ _` | '__| | | | | '_ \\ \/ / 
+ | |  _ / _ \/ _` | '__| | | | | '_ \\\\ \/ / 
  | |_| |  __/ (_| | |  | | |_| | | | |>  <  
   \____|\___|\__,_|_|  |_|\__, |_| |_/_/\_\ 
                           |___/             
@@ -45,7 +45,7 @@ CPPFLAGS += -Wall -Wextra -Wformat -fno-exceptions -DEMULATOR_BUILD=\"$(GIT_VERS
 $(DEPS_DIR)/%.o: CPPFLAGS += -w
 
 CXXFLAGS += -std=c++11
-CFLAGS += -std=c99
+CFLAGS += -std=gnu99
 
 DEBUG ?= 0
 ifeq ($(DEBUG), 1)
@@ -65,7 +65,7 @@ endif
 
 ifeq ($(UNAME_S), Linux)
     PLATFORM = "Linux"
-    LDFLAGS += -lGL -ldl `pkg-config --libs sdl3`
+    LDFLAGS += -lGL -ldl -latomic `pkg-config --libs sdl3`
     CPPFLAGS += `pkg-config --cflags sdl3`
     TARGET := $(TARGET_NAME)
 else ifeq ($(UNAME_S), Darwin)

@@ -26,11 +26,13 @@
 #define EPYX_HEADER_NEW 410
 #define EPYX_DECRYPT_BLOCK_SIZE 51
 #define NVRAM_SIZE (8 * 1024) // 8KB
+#define GLYNX_MAX_ROM_SIZE (2 * 1024 * 1024)
 
 class StateSerializer;
 class EEPROM;
 class GameDrive;
 class ElCheapoSD;
+class TraceLogger;
 
 class Media
 {
@@ -55,6 +57,7 @@ public:
     Media();
     ~Media();
     void Init();
+    void SetTraceLogger(TraceLogger* trace_logger);
     void Reset();
     void HardReset();
     u8* GetROM();
@@ -65,6 +68,7 @@ public:
     int GetROMSize();
     u32 GetCRC();
     bool IsInGameDatabase();
+    const char* GetGameDatabaseName();
     void ForceRotation(GLYNX_Rotation rotation);
     GLYNX_Rotation GetRotation();
     void ForceConsoleType(GLYNX_Console_Type type);
@@ -89,8 +93,10 @@ public:
     u16 GetHeaderBank0PageSize();
     u16 GetHeaderBank1PageSize();
     const char* GetFormatName();
-    bool LoadFromFile(const char* path);
+    bool LoadFromFile(const char* path, bool softpatching = false);
     bool LoadFromBuffer(const u8* buffer, int size, const char* path);
+    bool IsSoftpatchApplied() const;
+    const char* GetSoftpatchPath() const;
     GLYNX_Bios_State LoadBios(const char* path);
     GLYNX_Bios_State LoadBiosFromBuffer(const u8* buffer, int size);
     void UnloadBios();
@@ -106,10 +112,18 @@ public:
     void WriteBank1(u8 value);
     void WriteBank0A(u8 value);
     void WriteBank1A(u8 value);
+#if !defined(GLYNX_DISABLE_DISASSEMBLER)
+    void ShiftRegisterStrobe(bool strobe, bool trace = true);
+#else
     void ShiftRegisterStrobe(bool strobe);
+#endif
     void ShiftRegisterBit(bool bit);
     void AdvanceCounter();
     u32 GetCartBankAddress(int bank);
+#if !defined(GLYNX_DISABLE_DISASSEMBLER)
+    int GetEffectiveCartBank(int bank);
+    u32 GetLastCartBankAddress(int bank);
+#endif
     void SetAudinValue(bool value);
     bool GetAudinValue();
     u16 GetCounterValue();
@@ -141,7 +155,9 @@ public:
 
 private:
     void Serialize(StateSerializer& s, int version);
-    bool LoadFromZipFile(const u8* buffer, int size);
+    bool LoadFromZipFile(const u8* buffer, int size, bool softpatching);
+    bool LoadFromBufferWithSoftpatch(const u8* buffer, int size, const char* path,
+        bool softpatching);
     GLYNX_Bios_State LoadBiosData(const u8* buffer, int size, const char* path);
     void GatherInfoFromDB();
     bool GatherLynxHeader(const u8* buffer);
@@ -177,6 +193,7 @@ private:
     bool m_is_bios_valid;
     bool m_ready;
     bool m_is_in_game_database;
+    const char* m_game_database_name;
     char m_file_path[512];
     char m_file_directory[512];
     char m_file_name[512];
@@ -227,7 +244,10 @@ private:
     u16 m_homebrew_boot_address;
     u16 m_homebrew_size;
     int m_epyx_headerless;
+    TraceLogger* m_trace_logger;
     u32 m_crc;
+    bool m_softpatch_applied;
+    char m_softpatch_path[4096];
     u8* m_decrypt_buffer_a;
     u8* m_decrypt_buffer_b;
     u8* m_decrypt_buffer_tmp;

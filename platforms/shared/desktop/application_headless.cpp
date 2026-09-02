@@ -40,9 +40,9 @@ int application_headless_init(const ApplicationParams& params)
     Log("\n%s", GLYNX_TITLE_ASCII);
     Log("%s %s Headless Mode", GLYNX_TITLE, GLYNX_VERSION);
 
-    if (params.mcp_mode < 0 && params.debug_monitor_port <= 0)
+    if (params.mcp_mode < 0 && params.debug_monitor_port <= 0 && !params.comlynx_session_set)
     {
-        Error("Headless mode requires --mcp-stdio, --mcp-http, or --debug-monitor");
+        Error("Headless mode requires MCP, debug monitor, or ComLynx");
         return 1;
     }
 
@@ -110,6 +110,9 @@ int application_headless_init(const ApplicationParams& params)
         emu_debug_monitor_start(params.debug_monitor_port);
     }
 
+    if (params.comlynx_session_set)
+        emu_comlynx_connect(params.comlynx_session);
+
     signal(SIGINT, headless_signal_handler);
     signal(SIGTERM, headless_signal_handler);
 
@@ -132,9 +135,10 @@ void application_headless_mainloop(void)
         Uint64 frame_start = SDL_GetPerformanceCounter();
 
         emu_update();
+        gui_debug_update();
         gui_finish_loading_rom();
 
-        if (!emu_mcp_is_running() && !emu_debug_monitor_is_running())
+        if (!emu_mcp_is_running() && !emu_debug_monitor_is_running() && !emu_comlynx_is_active())
         {
             Log("No server running, exiting headless mode");
             break;

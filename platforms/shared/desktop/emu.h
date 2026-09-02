@@ -21,6 +21,7 @@
 #define EMU_H
 
 #include "gearlynx.h"
+#include "comlynx/comlynx_manager.h"
 
 #ifdef EMU_IMPORT
     #define EXTERN
@@ -136,6 +137,7 @@ EXTERN void emu_save_state_file(const char* file_path);
 EXTERN void emu_load_state_file(const char* file_path);
 EXTERN void update_savestates_data(void);
 EXTERN void emu_get_runtime(GLYNX_Runtime_Info& runtime);
+EXTERN double emu_get_frame_rate(void);
 EXTERN void emu_get_info(char* info, int buffer_size);
 EXTERN GearlynxCore* emu_get_core(void);
 EXTERN void emu_debug_step_over(void);
@@ -159,7 +161,17 @@ EXTERN void emu_mcp_start(void);
 EXTERN void emu_mcp_stop(void);
 EXTERN bool emu_mcp_is_running(void);
 EXTERN int emu_mcp_get_transport_mode(void);
+EXTERN const char* emu_mcp_get_http_address(void);
+EXTERN int emu_mcp_get_http_port(void);
 EXTERN void emu_mcp_pump_commands(void);
+EXTERN bool emu_comlynx_connect(int session);
+EXTERN void emu_comlynx_stop(void);
+EXTERN void emu_comlynx_pump(void);
+EXTERN bool emu_comlynx_is_active(void);
+EXTERN bool emu_comlynx_is_cable_connected(void);
+EXTERN ComLynxStatus emu_comlynx_get_status(void);
+EXTERN void emu_comlynx_reset_metrics(void);
+EXTERN void emu_comlynx_set_normal_barrier_stall_us(u32 stall_us);
 EXTERN void emu_debug_monitor_start(int port);
 EXTERN void emu_debug_monitor_stop(void);
 EXTERN bool emu_debug_monitor_is_running(void);

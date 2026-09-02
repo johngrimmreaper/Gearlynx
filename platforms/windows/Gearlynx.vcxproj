@@ -34,6 +34,7 @@
     <ClInclude Include="..\..\src\eeprom.h" />
     <ClInclude Include="..\..\src\eeprom_inline.h" />
     <ClInclude Include="..\..\src\common.h" />
+    <ClInclude Include="..\..\src\comlynx.h" />
     <ClInclude Include="..\..\src\crc.h" />
     <ClInclude Include="..\..\src\defines.h" />
     <ClInclude Include="..\..\src\game_db.h" />
@@ -62,6 +63,7 @@
     <ClInclude Include="..\..\src\suzy_defines.h" />
     <ClInclude Include="..\..\src\suzy_inline.h" />
     <ClInclude Include="..\..\src\state_serializer.h" />
+    <ClInclude Include="..\..\src\random.h" />
     <ClInclude Include="..\..\src\trace_logger.h" />
     <ClInclude Include="..\..\src\vgm_recorder.h" />
     <ClInclude Include="..\shared\dependencies\miniz\miniz.h" />
@@ -71,10 +73,15 @@
     <ClInclude Include="..\shared\desktop\events.h" />
     <ClInclude Include="..\shared\desktop\backers.h" />
     <ClInclude Include="..\shared\desktop\config.h" />
+    <ClInclude Include="..\shared\desktop\config_data.h" />
+    <ClInclude Include="..\shared\desktop\config_definitions.inc.h" />
+    <ClInclude Include="..\shared\desktop\config_macros.h" />
     <ClInclude Include="..\shared\desktop\console_utils.h" />
     <ClInclude Include="..\shared\desktop\vscode\debug_monitor_server.h" />
     <ClInclude Include="..\shared\desktop\vscode\framebuffer_server.h" />
     <ClInclude Include="..\shared\desktop\socket_types.h" />
+    <ClInclude Include="..\shared\desktop\comlynx\comlynx_manager.h" />
+    <ClInclude Include="..\shared\desktop\comlynx\comlynx_wire.h" />
     <ClInclude Include="..\shared\desktop\emu.h" />
     <ClInclude Include="..\shared\desktop\gui.h" />
     <ClInclude Include="..\shared\desktop\gui_actions.h" />
@@ -97,11 +104,13 @@
     <ClInclude Include="..\shared\desktop\gui_debug_text.h" />
     <ClInclude Include="..\shared\desktop\gui_debug_timers.h" />
     <ClInclude Include="..\shared\desktop\gui_debug_trace_logger.h" />
+    <ClInclude Include="..\shared\desktop\trace_logger_formatter.h" />
     <ClInclude Include="..\shared\desktop\gui_debug_uart.h" />
     <ClInclude Include="..\shared\desktop\gui_debug_widgets.h" />
     <ClInclude Include="..\shared\desktop\gui_filedialogs.h" />
     <ClInclude Include="..\shared\desktop\gui_menus.h" />
     <ClInclude Include="..\shared\desktop\gui_popups.h" />
+    <ClInclude Include="..\..\src\ips_patch.h" />
     <ClInclude Include="..\shared\dependencies\imgui\fonts\IconsMaterialDesign.h" />
     <ClInclude Include="..\shared\dependencies\imgui\fonts\MaterialIcons.h" />
     <ClInclude Include="..\shared\dependencies\imgui\fonts\RobotoMedium.h" />
@@ -160,6 +169,7 @@
     <ClCompile Include="..\shared\desktop\application_headless.cpp" />
     <ClCompile Include="..\shared\desktop\events.cpp" />
     <ClCompile Include="..\shared\desktop\config.cpp" />
+    <ClCompile Include="..\shared\desktop\comlynx\comlynx_manager.cpp" />
     <ClCompile Include="..\shared\desktop\vscode\debug_monitor_server.cpp" />
     <ClCompile Include="..\shared\desktop\vscode\framebuffer_server.cpp" />
     <ClCompile Include="..\shared\desktop\emu.cpp" />
@@ -182,6 +192,7 @@
     <ClCompile Include="..\shared\desktop\gui_debug_suzy.cpp" />
     <ClCompile Include="..\shared\desktop\gui_debug_timers.cpp" />
     <ClCompile Include="..\shared\desktop\gui_debug_trace_logger.cpp" />
+    <ClCompile Include="..\shared\desktop\trace_logger_formatter.cpp" />
     <ClCompile Include="..\shared\desktop\gui_debug_uart.cpp" />
     <ClCompile Include="..\shared\desktop\gui_filedialogs.cpp" />
     <ClCompile Include="..\shared\desktop\gui_menus.cpp" />
@@ -251,6 +262,7 @@
     <ConfigurationType>Application</ConfigurationType>
     <IntermediateDirectory>release\</IntermediateDirectory>
     <PrimaryOutput>Gearlynx</PrimaryOutput>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'" Label="Configuration">
     <PlatformToolSet>v145</PlatformToolSet>
@@ -260,6 +272,7 @@
     <ConfigurationType>Application</ConfigurationType>
     <IntermediateDirectory>release\</IntermediateDirectory>
     <PrimaryOutput>Gearlynx</PrimaryOutput>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <PlatformToolSet>v145</PlatformToolSet>
@@ -316,7 +329,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>.;../../src;../shared/dependencies/imgui;../shared/dependencies/mINI;../shared/dependencies/stb;../shared/dependencies/miniz;../shared/dependencies/glad;../shared/dependencies/json;dependencies/SDL3/include;release;.;.\GeneratedFiles;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.;../../src;../shared/desktop;../shared/dependencies/imgui;../shared/dependencies/mINI;../shared/dependencies/stb;../shared/dependencies/miniz;../shared/dependencies/glad;../shared/dependencies/json;dependencies/SDL3/include;release;.;.\GeneratedFiles;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>-Zc:strictStrings -Zc:throwingNew -w34100 -w34189 -w44996 -w44456 -w44457 -w44458 %(AdditionalOptions)</AdditionalOptions>
       <AssemblerListingLocation>release\</AssemblerListingLocation>
       <BrowseInformation>false</BrowseInformation>
@@ -345,6 +358,7 @@
       <RandomizedBaseAddress>true</RandomizedBaseAddress>
       <SubSystem>Windows</SubSystem>
       <SuppressStartupBanner>true</SuppressStartupBanner>
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
     </Link>
     <Midl>
       <DefaultCharType>Unsigned</DefaultCharType>
@@ -357,7 +371,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>.;../../src;../shared/dependencies/imgui;../shared/dependencies/mINI;../shared/dependencies/stb;../shared/dependencies/miniz;../shared/dependencies/glad;../shared/dependencies/json;dependencies/SDL3/include;release;.;.\GeneratedFiles;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.;../../src;../shared/desktop;../shared/dependencies/imgui;../shared/dependencies/mINI;../shared/dependencies/stb;../shared/dependencies/miniz;../shared/dependencies/glad;../shared/dependencies/json;dependencies/SDL3/include;release;.;.\GeneratedFiles;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>-Zc:strictStrings -Zc:throwingNew -w34100 -w34189 -w44996 -w44456 -w44457 -w44458 %(AdditionalOptions)</AdditionalOptions>
       <AssemblerListingLocation>release\</AssemblerListingLocation>
       <BrowseInformation>false</BrowseInformation>
@@ -386,6 +400,7 @@
       <RandomizedBaseAddress>true</RandomizedBaseAddress>
       <SubSystem>Windows</SubSystem>
       <SuppressStartupBanner>true</SuppressStartupBanner>
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
     </Link>
     <Midl>
       <DefaultCharType>Unsigned</DefaultCharType>
@@ -398,7 +413,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>.;../../src;../shared/dependencies/imgui;../shared/dependencies/mINI;../shared/dependencies/stb;../shared/dependencies/miniz;../shared/dependencies/glad;../shared/dependencies/json;dependencies/SDL3/include;debug;.\GeneratedFiles;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.;../../src;../shared/desktop;../shared/dependencies/imgui;../shared/dependencies/mINI;../shared/dependencies/stb;../shared/dependencies/miniz;../shared/dependencies/glad;../shared/dependencies/json;dependencies/SDL3/include;debug;.\GeneratedFiles;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>-Zc:strictStrings -Zc:throwingNew -w34100 -w34189 -w44996 -w44456 -w44457 -w44458 %(AdditionalOptions)</AdditionalOptions>
       <AssemblerListingLocation>debug\</AssemblerListingLocation>
       <BrowseInformation>false</BrowseInformation>
@@ -438,7 +453,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>.;../../src;../shared/dependencies/imgui;../shared/dependencies/mINI;../shared/dependencies/stb;../shared/dependencies/miniz;../shared/dependencies/glad;../shared/dependencies/json;dependencies/SDL3/include;debug;.\GeneratedFiles;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.;../../src;../shared/desktop;../shared/dependencies/imgui;../shared/dependencies/mINI;../shared/dependencies/stb;../shared/dependencies/miniz;../shared/dependencies/glad;../shared/dependencies/json;dependencies/SDL3/include;debug;.\GeneratedFiles;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>-Zc:strictStrings -Zc:throwingNew -w34100 -w34189 -w44996 -w44456 -w44457 -w44458 %(AdditionalOptions)</AdditionalOptions>
       <AssemblerListingLocation>debug\</AssemblerListingLocation>
       <BrowseInformation>false</BrowseInformation>

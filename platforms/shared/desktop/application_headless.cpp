@@ -25,6 +25,7 @@
 #include "gui.h"
 #include "gui_debug.h"
 #include "gui_debug_disassembler.h"
+#include "gui_debug_profiler.h"
 #include "log.h"
 
 static volatile bool headless_running = true;
@@ -94,6 +95,9 @@ int application_headless_init(const ApplicationParams& params)
         gui_debug_load_symbols_file(params.symbol_file);
     }
 
+    if ((params.state_slot > 0) || IsValidPointer(params.state_file))
+        gui_load_state_after_media(params.state_slot, params.state_file);
+
     if (params.mcp_mode >= 0)
     {
         const char* mcp_http_address = params.mcp_http_address.empty() ? "127.0.0.1" : params.mcp_http_address.c_str();
@@ -136,6 +140,7 @@ void application_headless_mainloop(void)
 
         emu_update();
         gui_debug_update();
+        gui_debug_profiler_update_headless();
         gui_finish_loading_rom();
 
         if (!emu_mcp_is_running() && !emu_debug_monitor_is_running() && !emu_comlynx_is_active())

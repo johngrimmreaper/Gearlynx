@@ -27,6 +27,7 @@
 
 static u8* buffer = NULL;
 static size_t sizes[REWIND_MAX_SNAPSHOTS] = { 0 };
+static std::stack<M6502::GLYNX_CallStackEntry> call_stacks[REWIND_MAX_SNAPSHOTS];
 static int head = 0;
 static int count = 0;
 static int capacity = 0;
@@ -111,6 +112,11 @@ void rewind_push(void)
     if (!emu_get_core()->SaveState(slot, size, false))
         return;
 
+    if (config_debug.debug)
+        call_stacks[head] = *emu_get_core()->GetM6502()->GetDisassemblerCallStack();
+    else
+        call_stacks[head] = std::stack<M6502::GLYNX_CallStackEntry>();
+
     sizes[head] = size;
     head = (head + 1) % capacity;
     if (count < capacity)
@@ -131,7 +137,11 @@ bool rewind_pop(void)
     bool ok = emu_get_core()->LoadState(slot, size);
 
     if (ok)
+    {
+        emu_debug_state_restored();
+        *emu_get_core()->GetM6502()->GetDisassemblerCallStack() = call_stacks[idx];
         events_sync_input();
+    }
 
     head = idx;
     count--;
@@ -161,11 +171,6 @@ int rewind_get_snapshot_count(void)
     return count;
 }
 
-size_t rewind_get_memory_usage(void)
-{
-    return IsValidPointer(buffer) ? REWIND_MAX_MEMORY_SIZE : 0;
-}
-
 bool rewind_seek(int age)
 {
     if (emu_comlynx_is_active() || age < 0 || age >= count)
@@ -181,6 +186,8 @@ bool rewind_seek(int age)
 
     if (ok)
     {
+        emu_debug_state_restored();
+        *emu_get_core()->GetM6502()->GetDisassemblerCallStack() = call_stacks[idx];
         events_sync_input();
         seek_age = age;
     }
@@ -253,6 +260,9 @@ static bool ensure_storage(void)
 static void release_storage(void)
 {
     SafeDeleteArray(buffer);
+
+    for (int i = 0; i < REWIND_MAX_SNAPSHOTS; i++)
+        call_stacks[i] = std::stack<M6502::GLYNX_CallStackEntry>();
 }
 
 static void refresh_capacity(void)

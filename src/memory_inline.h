@@ -30,6 +30,19 @@ INLINE u8* Memory::GetRAM()
     return m_state.ram;
 }
 
+INLINE void Memory::ApplyCheats()
+{
+    for (int i = 0; i < m_cheat_count; i++)
+    {
+        GLYNX_Cheat* cheat = &m_cheats[i];
+
+        if ((cheat->compare >= 0) && (m_state.ram[cheat->address] != cheat->compare))
+            continue;
+
+        m_state.ram[cheat->address] = cheat->value;
+    }
+}
+
 template<bool debug>
 INLINE u8 Memory::Read(u16 address)
 {
@@ -40,7 +53,8 @@ INLINE u8 Memory::Read(u16 address)
     if (!debug)
     {
 #if !defined(GLYNX_DISABLE_DISASSEMBLER)
-        m_m6502->CheckMemoryBreakpoints(address, true);
+        if (m_m6502->HasMemoryHooks(true))
+            m_m6502->CheckCpuAddressHooks(address, true);
 #endif
     }
 
@@ -76,7 +90,8 @@ INLINE void Memory::Write(u16 address, u8 value)
     if (!debug)
     {
 #if !defined(GLYNX_DISABLE_DISASSEMBLER)
-        m_m6502->CheckMemoryBreakpoints(address, false);
+        if (m_m6502->HasMemoryHooks(false))
+            m_m6502->CheckCpuAddressHooks(address, false);
 #endif
     }
 

@@ -2,9 +2,11 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io/introduction) server for the Gearlynx emulator, enabling AI-assisted debugging and development of Atari Lynx games.
 
-This server provides tools for game development, rom hacking, reverse engineering, and debugging through standardized MCP protocols compatible with AI agents like GitHub Copilot, Claude, Codex and others.
+This server provides tools for game development, rom hacking, reverse engineering, and debugging through standardized MCP protocols compatible with AI agents like Claude Code, Codex and others.
 
 ## Downloads
+
+These MCP Bundles (`.mcpb`) package Gearlynx with its MCP server configuration for MCP clients that install bundles, and are the packages published to the [MCP Registry](https://registry.modelcontextprotocol.io/). Claude Code and Codex use a regular Gearlynx build instead, see [Quick Start](#quick-start).
 
 <table>
   <thead>
@@ -18,29 +20,29 @@ This server provides tools for game development, rom hacking, reverse engineerin
     <tr>
       <td rowspan="2"><strong>Windows</strong></td>
       <td>x64</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.31/Gearlynx-1.2.31-mcpb-windows-x64.mcpb">Gearlynx-1.2.31-mcpb-windows-x64.mcpb</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.40/Gearlynx-1.2.40-mcpb-windows-x64.mcpb">Gearlynx-1.2.40-mcpb-windows-x64.mcpb</a></td>
     </tr>
     <tr>
       <td>ARM64</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.31/Gearlynx-1.2.31-mcpb-windows-arm64.mcpb">Gearlynx-1.2.31-mcpb-windows-arm64.mcpb</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.40/Gearlynx-1.2.40-mcpb-windows-arm64.mcpb">Gearlynx-1.2.40-mcpb-windows-arm64.mcpb</a></td>
     </tr>
     <tr>
       <td rowspan="2"><strong>macOS</strong></td>
       <td>x64</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.31/Gearlynx-1.2.31-mcpb-macos-x64.mcpb">Gearlynx-1.2.31-mcpb-macos-x64.mcpb</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.40/Gearlynx-1.2.40-mcpb-macos-x64.mcpb">Gearlynx-1.2.40-mcpb-macos-x64.mcpb</a></td>
     </tr>
     <tr>
       <td>ARM64</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.31/Gearlynx-1.2.31-mcpb-macos-arm64.mcpb">Gearlynx-1.2.31-mcpb-macos-arm64.mcpb</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.40/Gearlynx-1.2.40-mcpb-macos-arm64.mcpb">Gearlynx-1.2.40-mcpb-macos-arm64.mcpb</a></td>
     </tr>
     <tr>
       <td rowspan="2"><strong>Linux</strong></td>
       <td>x64</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.31/Gearlynx-1.2.31-mcpb-linux-x64.mcpb">Gearlynx-1.2.31-mcpb-linux-x64.mcpb</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.40/Gearlynx-1.2.40-mcpb-linux-x64.mcpb">Gearlynx-1.2.40-mcpb-linux-x64.mcpb</a></td>
     </tr>
     <tr>
       <td>ARM64</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.31/Gearlynx-1.2.31-mcpb-linux-arm64.mcpb">Gearlynx-1.2.31-mcpb-linux-arm64.mcpb</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.40/Gearlynx-1.2.40-mcpb-linux-arm64.mcpb">Gearlynx-1.2.40-mcpb-linux-arm64.mcpb</a></td>
     </tr>
   </tbody>
 </table>
@@ -57,7 +59,9 @@ This server provides tools for game development, rom hacking, reverse engineerin
 - **Bookmarks**: Memory and disassembler bookmarks for navigation
 - **Call Stack**: View function call hierarchy
 - **Trace Logger**: CPU instructions, master-clock cycles, absolute pagination, and exact Suzy/Mikey/UART/RedEye/cartridge event filters
+- **Profiler**: Per-function call counts, calls per frame, and inclusive/exclusive cycle statistics
 - **Screenshot Capture**: Get current frame as PNG image
+- **Video Recording**: Record emulated video and audio to AVI files on disk
 - **Rewind**: Time-travel debugging — seek to any recorded snapshot to inspect past emulator state
 - **Documentation Resources**: Built-in hardware and programming documentation for AI context
 - **GUI Integration**: MCP server runs alongside the emulator GUI, sharing the same state
@@ -77,6 +81,12 @@ The HTTP transport mode runs the emulator with an embedded web server on `127.0.
 ### Headless Mode
 
 Add `--headless` to run without a GUI window. This is useful for servers, CLI agents, or any machine without a display. All MCP tools work identically in headless mode. Requires `--mcp-stdio` or `--mcp-http`.
+
+A save state can be loaded at launch too, with `--load-state 1` for slot 1 or `--load-state FILE` for a state file; run `gearlynx --help` for the full list.
+
+### Pause When Inactive
+
+While the MCP server is running, the emulator keeps running when its window loses focus, even with **Pause When Inactive** enabled in the **Emulator** menu. The setting keeps its value and applies again once the server stops.
 
 ### Concurrent Clients
 
@@ -119,17 +129,25 @@ Without `--mcp-router`, call every MCP tool directly.
 
 ## Quick Start
 
-### STDIO Mode with VS Code
+Get a desktop build of Gearlynx from the [downloads](README.md#downloads) or [build it from source](README.md#build-instructions). In the examples below, replace `/path/to/gearlynx` with the full path to the executable:
 
-1. **Install [GitHub Copilot extension](https://code.visualstudio.com/docs/copilot/overview)** in VS Code
+- **macOS:** `/Applications/Gearlynx.app/Contents/MacOS/gearlynx`
+- **Linux:** `/path/to/gearlynx`
+- **Windows:** `C:/path/to/gearlynx.exe`
 
-2. **Configure VS Code settings**:
+### STDIO Mode with Claude Code
 
-   Add to your workspace folder a file named `.vscode/mcp.json` with:
+1. **Add the Gearlynx MCP server** using the CLI:
+
+   ```bash
+   claude mcp add --transport stdio --scope user gearlynx -- /path/to/gearlynx --mcp-stdio
+   ```
+
+   Everything after `--` is passed to Gearlynx untouched. `--scope user` makes the server available in all your projects. Use `--scope local` (the default) to add it only to the current project, or `--scope project` to share it through a `.mcp.json` file in the project root:
 
    ```json
    {
-     "servers": {
+     "mcpServers": {
        "gearlynx": {
          "command": "/path/to/gearlynx",
          "args": ["--mcp-stdio"]
@@ -138,79 +156,43 @@ Without `--mcp-router`, call every MCP tool directly.
    }
    ```
 
-   **Important:** Update the `command` path to match your build location:
-   - **macOS:** `/path/to/gearlynx`
-   - **Linux:** `/path/to/gearlynx`
-   - **Windows:** `C:/path/to/gearlynx.exe`
-
-3. **Restart VS Code** may be necessary for settings to take effect
-
-4. **Open GitHub Copilot Chat** and start debugging:
-   - The emulator will auto-start with MCP server enabled
-   - Load a game ROM
-   - Start chatting with Copilot about the game state
-   - You can add context from "MCP Resources" if needed
-
-### STDIO Mode with Claude Desktop
-
-#### Option 1: Desktop Extension (Recommended)
-
-The easiest way to install Gearlynx MCP server on Claude Desktop is using the MCPB package:
-
-1. **Download the latest MCPB package** for your platform from the [releases page](https://github.com/drhelius/gearlynx/releases).
-
-2. **Install the extension**:
-   - Open Claude Desktop
-   - Navigate to **Settings > Extensions**
-   - Click **Advanced settings**
-   - In the Extension Developer section, click **Install Extension…**
-   - Select the downloaded `.mcpb` file
-
-3. **Start debugging**: The extension is now available in your conversations. The emulator will automatically launch when the tool is enabled.
-
-#### Option 2: Manual Configuration
-
-If you prefer to build from source or configure manually:
-
-1. **Edit Claude Desktop config file**:
-
-   Follow [these instructions](https://modelcontextprotocol.io/quickstart/user#for-claude-desktop-users) to access Claude's config file, then edit it to include:
-
-   ```json
-   {
-     "mcpServers": {
-       "gearlynx": {
-         "command": "/path/to/gearlynx/platforms/macos/gearlynx",
-         "args": ["--mcp-stdio"]
-       }
-     }
-   }
-   ```
-
-   **Config file locations:**
-   - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-   - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-   - **Linux:** `~/.config/Claude/claude_desktop_config.json`
-
-   **Important:** Update the `command` path to match your build location.
-
-2. **Restart Claude Desktop**
-
-### STDIO Mode with Claude Code
-
-1. **Add the Gearlynx MCP server** using the CLI:
-   ```bash
-   claude mcp add --transport stdio gearlynx -- /path/to/gearlynx --mcp-stdio
-   ```
-
-   **Important:** Update the path to match your build location.
+   Claude Code asks for approval the first time it uses a server from `.mcp.json`.
 
 2. **Verify the server was added**:
+
    ```bash
    claude mcp list
    ```
 
-3. **Start debugging**: Open Claude Code and start chatting about the game state. The emulator will auto-start when tools are invoked.
+3. **Start debugging**: Start Claude Code and ask about the game state. Gearlynx launches when the session starts. Run `/mcp` inside Claude Code to check the server status or reconnect it.
+
+### STDIO Mode with Codex
+
+The Codex CLI, IDE extension, and desktop app share the same MCP configuration, so you only need to add the server once.
+
+1. **Add the Gearlynx MCP server** using the CLI:
+
+   ```bash
+   codex mcp add gearlynx -- /path/to/gearlynx --mcp-stdio
+   ```
+
+   Or add it to `~/.codex/config.toml`:
+
+   ```toml
+   [mcp_servers.gearlynx]
+   command = "/path/to/gearlynx"
+   args = ["--mcp-stdio"]
+   ```
+
+   To use the server only in one project, add the same table to `.codex/config.toml` in that project. Codex loads project configuration only for trusted projects. In TOML, write Windows paths with forward slashes or in single quotes.
+
+2. **Verify the server was added**:
+
+   ```bash
+   codex mcp list
+   ```
+
+3. **Start debugging**: Start Codex and ask about the game state. Gearlynx launches when the session starts. Type `/mcp` in the Codex CLI to see the active servers.
 
 ### HTTP Mode
 
@@ -218,67 +200,64 @@ If you prefer to build from source or configure manually:
 
    ```bash
    ./gearlynx --mcp-http
-  ```
+   ```
 
-  The default endpoint is `http://127.0.0.1:7777/mcp`.
+   The default endpoint is `http://127.0.0.1:7777/mcp`.
 
-  To use a custom port:
+   To use a custom port:
 
-  ```bash
+   ```bash
    ./gearlynx --mcp-http --mcp-http-port 3000
-  ```
+   ```
 
-  To bind to a custom address, set a bearer token first:
+   To bind to a custom address, set a bearer token first:
 
-  ```bash
-  GEARLYNX_MCP_HTTP_TOKEN="change-this-token" ./gearlynx --mcp-http --mcp-http-address 0.0.0.0 --mcp-http-port 3000
-  ```
+   ```bash
+   GEARLYNX_MCP_HTTP_TOKEN="change-this-token" ./gearlynx --mcp-http --mcp-http-address 0.0.0.0 --mcp-http-port 3000
+   ```
 
-  Clients must connect using the server's actual interface address, such as `http://192.168.1.50:3000/mcp`, not `0.0.0.0` or a spoofed loopback address.
+   Clients must connect using the server's actual interface address, such as `http://192.168.1.50:3000/mcp`, not `0.0.0.0` or a spoofed loopback address.
 
-  You can also start the server using the "MCP" menu in the GUI.
+   You can also start the server using the "MCP" menu in the GUI.
 
 2. **Configure bearer-token authentication**:
 
-  Set `GEARLYNX_MCP_HTTP_TOKEN` before starting HTTP mode. Authentication is optional for loopback binds and required for wildcard or other non-loopback binds.
+   Set `GEARLYNX_MCP_HTTP_TOKEN` before starting HTTP mode. Authentication is optional for loopback binds and required for wildcard or other non-loopback binds.
 
-  macOS and Linux:
+   macOS and Linux:
 
-  ```bash
-  GEARLYNX_MCP_HTTP_TOKEN="change-this-token" ./gearlynx --mcp-http
-  ```
-
-  Windows PowerShell:
-
-  ```powershell
-  $env:GEARLYNX_MCP_HTTP_TOKEN = "change-this-token"
-  .\gearlynx.exe --mcp-http
-  ```
-
-  Windows Command Prompt:
-
-  ```cmd
-  set GEARLYNX_MCP_HTTP_TOKEN=change-this-token
-  gearlynx.exe --mcp-http
+   ```bash
+   GEARLYNX_MCP_HTTP_TOKEN="change-this-token" ./gearlynx --mcp-http
    ```
 
-3. **Configure VS Code** `.vscode/mcp.json`:
+   Windows PowerShell:
 
-   ```json
-   {
-     "servers": {
-       "gearlynx": {
-         "type": "http",
-         "url": "http://127.0.0.1:7777/mcp",
-         "headers": {
-           "Authorization": "Bearer change-this-token"
-         }
-       }
-     }
-   }
+   ```powershell
+   $env:GEARLYNX_MCP_HTTP_TOKEN = "change-this-token"
+   .\gearlynx.exe --mcp-http
    ```
 
-4. **Or configure Claude Desktop**:
+   Windows Command Prompt:
+
+   ```cmd
+   set GEARLYNX_MCP_HTTP_TOKEN=change-this-token
+   gearlynx.exe --mcp-http
+   ```
+
+3. **Configure Claude Code**:
+
+   ```bash
+   claude mcp add --transport http --scope user gearlynx http://127.0.0.1:7777/mcp
+   ```
+
+   If the server uses a bearer token, add the header:
+
+   ```bash
+   claude mcp add --transport http --scope user gearlynx http://127.0.0.1:7777/mcp \
+     --header "Authorization: Bearer change-this-token"
+   ```
+
+   In a shared `.mcp.json`, read the token from the environment instead of committing it:
 
    ```json
    {
@@ -287,20 +266,34 @@ If you prefer to build from source or configure manually:
          "type": "http",
          "url": "http://127.0.0.1:7777/mcp",
          "headers": {
-           "Authorization": "Bearer change-this-token"
+           "Authorization": "Bearer ${GEARLYNX_MCP_HTTP_TOKEN}"
          }
        }
      }
    }
    ```
 
-5. **Or configure Claude Code**:
+4. **Or configure Codex**:
 
    ```bash
-  claude mcp add --transport http gearlynx http://127.0.0.1:7777/mcp
+   codex mcp add gearlynx --url http://127.0.0.1:7777/mcp
    ```
 
-6. **Restart your AI client** and start debugging
+   If the server uses a bearer token, Codex reads it from an environment variable, so set `GEARLYNX_MCP_HTTP_TOKEN` in the environment where Codex runs too:
+
+   ```bash
+   codex mcp add gearlynx --url http://127.0.0.1:7777/mcp --bearer-token-env-var GEARLYNX_MCP_HTTP_TOKEN
+   ```
+
+   The equivalent `~/.codex/config.toml` entry:
+
+   ```toml
+   [mcp_servers.gearlynx]
+   url = "http://127.0.0.1:7777/mcp"
+   bearer_token_env_var = "GEARLYNX_MCP_HTTP_TOKEN"
+   ```
+
+5. **Start a new Claude Code or Codex session** and start debugging
 
 > **Note:** The MCP HTTP Server must be running standalone before connecting the AI client.
 > **Security:** Without `GEARLYNX_MCP_HTTP_TOKEN`, HTTP mode starts only on a loopback address. Wildcard and other non-loopback binds are refused. `Host` and browser `Origin` values are matched to the connection's actual destination address to prevent DNS rebinding and address spoofing.
@@ -319,6 +312,7 @@ Once configured, you can ask your AI assistant:
 - "Pause execution and show me the Mikey timers"
 - "Step through the next 5 instructions"
 - "Capture a screenshot of the current frame"
+- "Record a video of the next 600 frames to /path/to/clip.avi"
 - "Tap the A button on the controller"
 - "Show me the Suzy registers"
 
@@ -329,6 +323,7 @@ Once configured, you can ask your AI assistant:
 - "There's a data decompression routine around address 0xC000. Step through it instruction by instruction, reverse engineer the compression algorithm, and explain how it works with examples"
 - "Find where the game stores its level data in ROM. Analyze the data structure format, create a memory map showing each section, and add symbols for the data tables"
 - "The game is rendering corrupted graphics. Examine the Suzy registers, check the VIDBAS frame buffer, inspect the Mikey display settings, and diagnose what's causing the corruption. Set up watches on relevant memory addresses"
+- "Profile the game for a few seconds, then tell me which functions use the most CPU time per frame and what they do"
 
 ## Available MCP Tools
 
@@ -388,11 +383,17 @@ Exact trace filters:
 - CPU: `cpu.instructions`, `cpu.irqs`
 - Suzy math/input: `suzy.math.operations`, `suzy.math.completions`, `suzy.input.reads`
 - Suzy sprites: `suzy.sprites.engine`, `suzy.sprites.scbs`, `suzy.sprites.skips`, `suzy.sprites.collisions`, `suzy.sprites.rows`, `suzy.bus`
-- Mikey timers/display: `mikey.timers.registers`, `mikey.timers.underflows`, `mikey.timers.irqs`, `mikey.timers.links`, `mikey.interrupts`, `mikey.display.registers`, `mikey.display.palette`, `mikey.display.dma`, `mikey.display.timing`
+- Mikey timers/display: `mikey.timers.registers`, `mikey.timers.underflows`, `mikey.timers.irqs`, `mikey.timers.links`, `mikey.interrupts`, `mikey.display.registers`, `mikey.display.palette`, `mikey.display.dma`, `mikey.display.timing`, `mikey.display.missed_vblank`
 - Mikey audio/UART: `mikey.audio.channels`, `mikey.audio.mixer`, `mikey.audio.clocks`, `mikey.uart.registers`, `mikey.uart.transfers`, `mikey.uart.irqs`, `mikey.uart.problems`, `mikey.uart.breaks`, `mikey.uart.comlynx`
 - RedEye/cartridge/debug: `redeye.packets`, `redeye.problems`, `cartridge.address`, `cartridge.accesses`, `cartridge.eeprom`, `cartridge.audin`, `cartridge.storage`, `debug.messages`
 
+`mikey.display.missed_vblank` logs each frame where the CPU access set with `vblank_watch_address` (hex) and `vblank_watch_operation` (`read`, `write`, or `read_write`) did not happen before the Timer 2 underflow that raises the VBL interrupt, with the number of consecutive misses; the first VBlank after starting, changing the watch, resetting, or loading a state only arms the check. Both parameters persist and keep their current values when omitted.
+
 CPU entries are captured before opcode fetch. Hardware events emitted while Suzy and Mikey process a completed CPU/bus batch use that committed batch's `GearlynxCore::m_total_cycles` position. A backwards clock after reset is formatted as `RESET`; sequence identities remain monotonic across clears and resets.
+
+### Profiler
+- `set_profiler` - Start, stop, or reset the function profiler with `action` (`start`, `stop`, `reset`). `start` opens the Profiler debugger window and `stop` closes it. Statistics are only collected while the window is visible (in headless mode, while started), starting on the next frame
+- `get_profiler_data` - Read profiler results: `collecting`, `window_open`, `total_cycles`, `frame_cycles`, `frames`, `function_count`, and per-function `name`, `symbol`, `address`, `type`, `calls`, `calls_per_frame`, `inclusive_cycles`, `inclusive_percent`, `exclusive_cycles`, `exclusive_percent`, `average_cycles`, `min_cycles`, and `max_cycles`. Optional `sort` (`inclusive`, `exclusive`, `calls`, `average`, `max`; highest first), `count` (default 50, max 1000), and `filter` (name or hex address substring)
 
 ### Breakpoints
 - `set_breakpoint` - Set execution, read, or write breakpoint at address. Read/write breakpoints stop with PC at instruction after memory access
@@ -417,6 +418,8 @@ CPU entries are captured before opcode fetch. Hardware events emitted while Suzy
 
 ### Screen Capture
 - `get_screenshot` - Capture current screen frame as base64 PNG
+- `start_video_recording` - Start recording video and audio to an AVI file (MJPEG, uncompressed or PNG compressed video, 16-bit PCM audio). Only the resulting `file_path` is returned; the video stays on disk. Optional `file_path` (absolute; if omitted, an automatic name in the configured video recordings directory), `scale` (1-20), `aspect_ratio` (`screen`, `square`, `4:3`, `16:9`, `16:10`), and `quality` (`low`, `medium`, `high`, `lossless`, `lossless_compressed`). `lossless` is uncompressed; `lossless_compressed` stores PNG frames, much smaller but playable only with FFmpeg based players. Given options update the recording settings, same as the GUI menu. `screen` follows the display aspect ratio, which uses square pixels while debugging. When a shader preset is active outside debug mode, the shader output is recorded at the output window size and `scale` and `aspect_ratio` are ignored. Frames are recorded only while the emulator runs, so continue or step execution before stopping
+- `stop_video_recording` - Stop the active recording and finalize the AVI file. Returns `file_path` and the number of recorded `frames`
 - `get_frame_buffer` - Capture debug frame buffer as base64 PNG (VIDBAS from Suzy or DISPADR from Mikey)
 - `get_sprite` - Render SCB sprite image or return sprite metadata
 
@@ -436,6 +439,11 @@ CPU entries are captured before opcode fetch. Hardware events emitted while Suzy
 - `get_rewind_status` - Get rewind buffer status (snapshot count, capacity, buffered seconds, configuration)
 - `rewind_seek` - Seek to a specific rewind snapshot by number (1 = oldest, snapshot_count = newest). Non-destructive — can seek repeatedly
 
+### Cheats
+- `list_cheats` - List cheats with index, code, description, enabled, valid and active state
+- `add_cheat` - Add an enabled cheat: `AAAA:VV` or `AAAA?CC:VV` at a 16-bit RAM address (e.g. `0050:05`), join codes with `+`
+- `remove_cheat` - Remove a cheat by index
+
 ### Controller Input
 - `controller_button` - Control a button on the Lynx controller. Use action 'press' to hold, 'release' to let go, or 'press_and_release' for a quick tap. Buttons: up, down, left, right, a, b, option1, option2, pause
 - `controller_macro` - Run an ordered input macro. Supported commands are `tap`, `press`, `release`, and `wait`; timing is explicit through `wait` frame counts
@@ -445,7 +453,7 @@ CPU entries are captured before opcode fetch. Hardware events emitted while Suzy
 
 In addition to tools, the MCP server provides documentation resources that AI assistants can access to better understand the Atari Lynx hardware and programming.
 
-MCP clients usually offer resources in the "Add context..." section of the chat interface. You may need to manually add them when you think they are relevant.
+In Claude Code, type `@` in your prompt to pick a resource, or reference one directly, for example `@gearlynx:gearlynx://hardware/lynx1_general_overview`. Codex reads resources through its built-in MCP resource tools, so ask it to read the ones that are relevant.
 
 ### Hardware Documentation Resources
 
@@ -480,8 +488,8 @@ Complete technical reference documentation for Atari Lynx hardware components:
 ### STDIO Transport
 ```
 ┌─────────────────┐                    ┌──────────────────┐
-│   VS Code /     │       stdio        │     Gearlynx     │
-│ Claude Desktop  │◄──────────────────►│    MCP Server    │
+│  Claude Code /  │       stdio        │     Gearlynx     │
+│      Codex      │◄──────────────────►│    MCP Server    │
 │   (AI Client)   │       pipes        │   (background)   │
 └─────────────────┘                    └──────────────────┘
         │                                       │
@@ -498,8 +506,8 @@ Complete technical reference documentation for Atari Lynx hardware components:
 ### HTTP Transport
 ```
 ┌─────────────────┐                    ┌──────────────────┐
-│   VS Code /     │  HTTP (port 7777)  │     Gearlynx     │
-│ Claude Desktop  │◄──────────────────►│ MCP HTTP Server  │
+│  Claude Code /  │  HTTP (port 7777)  │     Gearlynx     │
+│      Codex      │◄──────────────────►│ MCP HTTP Server  │
 │   (AI Client)   │                    │    (listener)    │
 └─────────────────┘                    └──────────────────┘
                                                 │

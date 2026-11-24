@@ -24,6 +24,7 @@
 
 #include "gui_debug_memeditor.h"
 #include "gui_debug_constants.h"
+#include "gui.h"
 
 MemEditor::MemEditor()
 {
@@ -69,6 +70,7 @@ MemEditor::MemEditor()
     m_find_text_buffer[0] = 0;
     m_find_bytes_last_address = -1;
     m_find_bytes_pattern_len = 0;
+    m_show_request = false;
 }
 
 MemEditor::~MemEditor()
@@ -134,7 +136,7 @@ void MemEditor::Draw(bool ascii, bool preview, bool options, bool cursors)
     if (options)
         footer_height += ImGui::GetFrameHeightWithSpacing();
     if (preview)
-        footer_height += ((character_size.y + 4) * 3) + 4;
+        footer_height += ((character_size.y + 4) * 3) + 4 + ImGui::GetStyle().SeparatorSize;
     if (cursors)
         footer_height += ImGui::GetFrameHeightWithSpacing();
 
@@ -350,7 +352,7 @@ void MemEditor::Draw(bool ascii, bool preview, bool options, bool cursors)
                         float column_x = ImGui::GetCursorPosX() + (ImGui::GetColumnWidth() / 2.0f);
                         ImDrawList* draw_list = ImGui::GetWindowDrawList();
                         ImVec2 window_pos = ImGui::GetWindowPos();
-                        draw_list->AddLine(ImVec2(window_pos.x + column_x, window_pos.y), ImVec2(window_pos.x + column_x, window_pos.y + 9999), ImGui::GetColorU32(dark_magenta));
+                        draw_list->AddLineV(window_pos.x + column_x, window_pos.y, window_pos.y + 9999, ImGui::GetColorU32(dark_magenta));
 
                         ImGui::TableNextColumn();
 
@@ -456,7 +458,7 @@ void MemEditor::DrawSelectionBackground(int x, int address, ImVec2 cell_pos, ImV
         cell_size.x += m_separator_column_width + 1;
     }
 
-    m_draw_list->AddRectFilled(cell_pos, cell_pos + cell_size + ImVec2(1, 0), ImColor(background_color));
+    m_draw_list->AddRectFilled(gui_snap_to_physical_pixel(cell_pos), gui_snap_to_physical_pixel(cell_pos + cell_size + ImVec2(1, 0)), ImColor(background_color));
 }
 
 void MemEditor::DrawSelectionAsciiBackground(int address, ImVec2 cell_pos, ImVec2 cell_size)
@@ -468,12 +470,11 @@ void MemEditor::DrawSelectionAsciiBackground(int address, ImVec2 cell_pos, ImVec
 
     if (address < start || address > end)
         return;
-    drawList->AddRectFilled(cell_pos, cell_pos + cell_size, ImColor(background_color));
+    drawList->AddRectFilled(gui_snap_to_physical_pixel(cell_pos), gui_snap_to_physical_pixel(cell_pos + cell_size), ImColor(background_color));
 }
 
 void MemEditor::DrawSelectionFrame(int x, int y, int address, ImVec2 cell_pos, ImVec2 cell_size)
 {
-    m_draw_list->Flags = ImDrawListFlags_None;
     ImVec4 frame_color = cyan;
     int start = m_selection_start <= m_selection_end ? m_selection_start : m_selection_end;
     int end = m_selection_end >= m_selection_start ? m_selection_end : m_selection_start;
@@ -491,19 +492,24 @@ void MemEditor::DrawSelectionFrame(int x, int y, int address, ImVec2 cell_pos, I
     }
 
     if ((x == 0) || (address == start))
-        m_draw_list->AddLine(cell_pos + ImVec2(-1.0f, -1.0f), cell_pos + ImVec2(-1.0f, cell_size.y), ImColor(frame_color), 1.0f);
+        DrawFrameRect(cell_pos + ImVec2(-1.0f, -0.5f), cell_pos + ImVec2(0.0f, cell_size.y + 0.5f), ImColor(frame_color));
 
     if ((x == (m_options.bytes_per_row - 1)) || (address == end))
-        m_draw_list->AddLine(cell_pos + ImVec2(cell_size.x, multiline && (address == end) && (x != (m_options.bytes_per_row - 1)) ? 0.0f : -1.0f), cell_pos + ImVec2(cell_size.x, cell_size.y), ImColor(frame_color), 1.0f);
+        DrawFrameRect(cell_pos + ImVec2(cell_size.x, multiline && (address == end) && (x != (m_options.bytes_per_row - 1)) ? 0.5f : -0.5f), cell_pos + ImVec2(cell_size.x + 1.0f, cell_size.y + 0.5f), ImColor(frame_color));
 
     if ((y == 0) || ((address - m_options.bytes_per_row) < start))
-        m_draw_list->AddLine(cell_pos + ImVec2(-1.0f, -1.0f), cell_pos + ImVec2(cell_size.x, -1.0f), ImColor(frame_color), 1.0f);
+        DrawFrameRect(cell_pos + ImVec2(-0.5f, -1.0f), cell_pos + ImVec2(cell_size.x + 0.5f, 0.0f), ImColor(frame_color));
 
     if ((address + m_options.bytes_per_row) > end)
-        m_draw_list->AddLine(cell_pos + ImVec2(-1.0f, cell_size.y), cell_pos + ImVec2(cell_size.x, cell_size.y), ImColor(frame_color), 1.0f);
+        DrawFrameRect(cell_pos + ImVec2(-0.5f, cell_size.y), cell_pos + ImVec2(cell_size.x + 0.5f, cell_size.y + 1.0f), ImColor(frame_color));
 
     if ((address == end) && (x != (m_options.bytes_per_row - 1)) && ((lines > 2) || (lines > 1 && (end_x >= start_x))))
-         m_draw_list->AddLine(cell_pos + ImVec2(cell_size.x, 0.0f), cell_pos + ImVec2(cell_size.x + cell_size.x, 0.0f), ImColor(frame_color), 1.0f);
+         DrawFrameRect(cell_pos + ImVec2(cell_size.x + 0.5f, 0.0f), cell_pos + ImVec2(cell_size.x + cell_size.x + 0.5f, 1.0f), ImColor(frame_color));
+}
+
+void MemEditor::DrawFrameRect(ImVec2 minimum, ImVec2 maximum, ImU32 color)
+{
+    m_draw_list->AddRectFilled(gui_snap_to_physical_pixel(minimum), gui_snap_to_physical_pixel(maximum), color);
 }
 
 void MemEditor::HandleSelection(int address, int row)
@@ -837,6 +843,8 @@ void MemEditor::BookMarkPopup()
 
     PushGuiFont();
 
+    gui_center_next_window();
+
     if (ImGui::BeginPopupModal(popup_title, NULL, ImGuiWindowFlags_AlwaysAutoResize))
     {
         static char address[9] = "";
@@ -913,6 +921,8 @@ void MemEditor::WatchPopup()
     }
 
     PushGuiFont();
+
+    gui_center_next_window();
 
     if (ImGui::BeginPopupModal(popup_title, NULL, ImGuiWindowFlags_AlwaysAutoResize))
     {
@@ -2053,6 +2063,7 @@ void MemEditor::FindBytesNext(int start_offset)
             m_selection_end = end_addr;
             m_find_bytes_last_address = offset;
             ScrollToAddress(addr + m_mem_base_addr);
+            m_show_request = true;
             return;
         }
     }
@@ -2062,6 +2073,13 @@ void MemEditor::DrawFindBytesWindow()
 {
     if (m_find_bytes_window)
         FindBytesWindow();
+}
+
+bool MemEditor::ConsumeShowRequest()
+{
+    bool ret = m_show_request;
+    m_show_request = false;
+    return ret;
 }
 
 void MemEditor::FindBytesWindow()
@@ -2155,6 +2173,7 @@ void MemEditor::FindBytesWindow()
                     m_selection_start = address;
                     m_selection_end = end_addr;
                     ScrollToAddress(address + m_mem_base_addr);
+                    m_show_request = true;
                 }
             }
         }
@@ -2459,29 +2478,3 @@ void MemEditor::SaveSettings(std::ostream& stream)
     }
 }
 
-void MemEditor::LoadSettings(std::istream& stream)
-{
-    m_bookmarks.clear();
-    int bookmark_count = 0;
-    stream.read((char*)&bookmark_count, sizeof(int));
-    for (int i = 0; i < bookmark_count; i++)
-    {
-        Bookmark bookmark;
-        stream.read((char*)&bookmark.address, sizeof(int));
-        stream.read(bookmark.name, sizeof(bookmark.name));
-        m_bookmarks.push_back(bookmark);
-    }
-
-    m_watches.clear();
-    int watch_count = 0;
-    stream.read((char*)&watch_count, sizeof(int));
-    for (int i = 0; i < watch_count; i++)
-    {
-        Watch watch;
-        stream.read((char*)&watch.address, sizeof(int));
-        stream.read(watch.notes, sizeof(watch.notes));
-        stream.read((char*)&watch.size, sizeof(int));
-        stream.read((char*)&watch.format, sizeof(int));
-        m_watches.push_back(watch);
-    }
-}

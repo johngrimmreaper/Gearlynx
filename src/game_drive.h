@@ -44,7 +44,7 @@ public:
     u8 PeekByte() const;
     u8 ReadProgrammedByte(u32 address) const;
     void SaveState(std::ostream& stream);
-    void LoadState(std::istream& stream);
+    void LoadState(std::istream& stream, int version);
 
 private:
     enum Command
@@ -92,6 +92,7 @@ private:
         u16 time;
         u8 attributes;
         char name[13];
+        std::string host_name;
     };
 
 private:
@@ -104,6 +105,7 @@ private:
     void QueueDword(u32 value);
     void QueueResult(Result result);
     bool BuildHostPath(const std::string& guest_path, std::string& host_path) const;
+    bool ReadDirectoryEntries(const std::string& host_path, std::vector<DirectoryEntry>& entries) const;
     bool OpenFile(const std::string& guest_path);
     bool OpenDirectory(const std::string& guest_path);
     void CloseFile();
@@ -111,12 +113,11 @@ private:
     bool WriteFileData(const u8* data, u32 size);
     u16 InputWord(u32 offset) const;
     u32 InputDword(u32 offset) const;
-    void Serialize(StateSerializer& serializer);
+    void Serialize(StateSerializer& serializer, int version);
 
 private:
     bool m_available;
     bool m_awake;
-    bool m_low_power;
     bool m_programmed;
     bool m_file_open;
     bool m_file_writable;

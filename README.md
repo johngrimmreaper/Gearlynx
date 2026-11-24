@@ -30,11 +30,11 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
     <tr>
       <td rowspan="2"><strong>Windows</strong></td>
       <td>Desktop x64</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.31/Gearlynx-1.2.31-desktop-windows-x64.zip">Gearlynx-1.2.31-desktop-windows-x64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.40/Gearlynx-1.2.40-desktop-windows-x64.zip">Gearlynx-1.2.40-desktop-windows-x64.zip</a></td>
     </tr>
     <tr>
       <td>Desktop ARM64</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.31/Gearlynx-1.2.31-desktop-windows-arm64.zip">Gearlynx-1.2.31-desktop-windows-arm64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.40/Gearlynx-1.2.40-desktop-windows-arm64.zip">Gearlynx-1.2.40-desktop-windows-arm64.zip</a></td>
     </tr>
     <tr>
       <td rowspan="3"><strong>macOS</strong></td>
@@ -43,14 +43,14 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
     </tr>
     <tr>
       <td>Desktop Apple Silicon</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.31/Gearlynx-1.2.31-desktop-macos-arm64.zip">Gearlynx-1.2.31-desktop-macos-arm64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.40/Gearlynx-1.2.40-desktop-macos-arm64.zip">Gearlynx-1.2.40-desktop-macos-arm64.zip</a></td>
     </tr>
     <tr>
       <td>Desktop Intel</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.31/Gearlynx-1.2.31-desktop-macos-intel.zip">Gearlynx-1.2.31-desktop-macos-intel.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.40/Gearlynx-1.2.40-desktop-macos-intel.zip">Gearlynx-1.2.40-desktop-macos-intel.zip</a></td>
     </tr>
     <tr>
-      <td rowspan="5"><strong>Linux</strong></td>
+      <td rowspan="6"><strong>Linux</strong></td>
       <td>Ubuntu PPA</td>
       <td><a href="https://github.com/drhelius/ppa-geardome">drhelius/ppa-geardome</a></td>
     </tr>
@@ -59,16 +59,20 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
       <td><a href="https://github.com/drhelius/rpm-geardome">drhelius/rpm-geardome</a></td>
     </tr>
     <tr>
-      <td>Desktop Ubuntu 24.04 x64</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.31/Gearlynx-1.2.31-desktop-ubuntu24.04-x64.zip">Gearlynx-1.2.31-desktop-ubuntu24.04-x64.zip</a></td>
+      <td>Desktop Ubuntu 26.04 x64</td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.40/Gearlynx-1.2.40-desktop-ubuntu26.04-x64.zip">Gearlynx-1.2.40-desktop-ubuntu26.04-x64.zip</a></td>
     </tr>
     <tr>
-      <td>Desktop Ubuntu 22.04 x64</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.31/Gearlynx-1.2.31-desktop-ubuntu22.04-x64.zip">Gearlynx-1.2.31-desktop-ubuntu22.04-x64.zip</a></td>
+      <td>Desktop Ubuntu 26.04 ARM64</td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.40/Gearlynx-1.2.40-desktop-ubuntu26.04-arm64.zip">Gearlynx-1.2.40-desktop-ubuntu26.04-arm64.zip</a></td>
+    </tr>
+    <tr>
+      <td>Desktop Ubuntu 24.04 x64</td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.40/Gearlynx-1.2.40-desktop-ubuntu24.04-x64.zip">Gearlynx-1.2.40-desktop-ubuntu24.04-x64.zip</a></td>
     </tr>
     <tr>
       <td>Desktop Ubuntu 24.04 ARM64</td>
-      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.31/Gearlynx-1.2.31-desktop-ubuntu24.04-arm64.zip">Gearlynx-1.2.31-desktop-ubuntu24.04-arm64.zip</a></td>
+      <td><a href="https://github.com/drhelius/Gearlynx/releases/download/1.2.40/Gearlynx-1.2.40-desktop-ubuntu24.04-arm64.zip">Gearlynx-1.2.40-desktop-ubuntu24.04-arm64.zip</a></td>
     </tr>
     <tr>
       <td><strong>MCPB</strong></td>
@@ -106,11 +110,12 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
 - Internal database for automatic ROM detection and hardware selection if `Auto` options are selected.
 - Bank switching (BANK1 + AUDIN) and EEPROM.
 - Save files (EEPROM and NVRAM).
+- Cheat support for `AAAA:VV` codes.
 - GameDrive and ElCheapoSD cartridge APIs.
 - Supported platforms (standalone): Windows, Linux, BSD and macOS.
 - Supported platforms (libretro): Windows, Linux, macOS, Raspberry Pi, Android, iOS, tvOS, webOS, PlayStation Vita, PlayStation 3, Nintendo 3DS, Nintendo GameCube, Nintendo Wii, Nintendo WiiU, Nintendo Switch, Emscripten, Classic Mini systems (NES, SNES, C64, ...), OpenDingux, RetroFW and QNX.
 - Full debugger with just-in-time run-ahead disassembler that can handle self-modifying code, CPU and memory breakpoints, code navigation (goto address, JP JR and JSR double clicking), debug symbols, automatic labels, memory editor, memory search, Suzy and Mikey register viewer, audio channels, UART, cartridge and video inspector.
-- MCP server for AI-assisted debugging with GitHub Copilot, Claude, Codex and similar, exposing tools for execution control, memory inspection, hardware status, rewind and more.
+- MCP server for AI-assisted debugging with Claude Code, Codex and similar, exposing tools for execution control, memory inspection, hardware status, rewind and more.
 - Windows, Linux and macOS *Portable Mode*.
 - [Programmable Shader Chain](platforms/shared/desktop/shaders/README.md).
 - ROM loading from the command line by adding the ROM path as an argument.
@@ -123,6 +128,7 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
 - **BIOS**: Gearlynx requires a BIOS to work. It is possible to load any BIOS but the original with md5 `fcd403db69f54290b51035d82f835e7b` is recommended.
 - **Mouse Cursor**: Automatically hides when hovering over the main output window or when Main Menu is disabled.
 - **Portable Mode**: Run with `--portable`, or create an empty file named `portable.ini` in the same directory as the application binary. On macOS, place the file next to the `.app` bundle.
+- **Cheats**: Open **Emulator → Cheats...** to enter codes or import a RetroArch `.cht` file. Codes use the `AAAA:VV` format with a RAM address, for example `0050:05` writes `$05` to RAM `$0050`. Join several codes with `+`.
 
 ### Debugging Features
 - **Docking Windows**: In debug mode, you can dock windows together by pressing SHIFT and dragging a window onto another.
@@ -138,7 +144,7 @@ Don't hesitate to report bugs or ask for new features by [opening an issue](http
 | `$FDC1` | Append byte as ASCII character |
 | `$FDC2` | Append byte as two hex digits |
 | `$FDC3` | Set string pointer low byte |
-| `$FDC4` | Set string pointer high byte (writing this triggers the copy) |
+| `$FDC4` | Set string pointer high byte (once both bytes are written, in any order, the string is copied) |
 
 ### Command Line Usage
 ```
@@ -151,6 +157,7 @@ Arguments:
 Options:
   -f, --fullscreen            Start in fullscreen mode
   -w, --windowed              Start in windowed mode with menu visible
+      --load-state SLOT       Load save state slot 1-5, or a state file, once the media is loaded
       --mcp-stdio             Auto-start MCP server with stdio transport
       --mcp-http              Auto-start MCP server with HTTP transport
       --mcp-router            Enable compact MCP tool routing
@@ -167,7 +174,7 @@ Options:
 
 ### MCP Server
 
-Gearlynx includes a [Model Context Protocol](https://modelcontextprotocol.io/introduction) (MCP) server that enables AI-assisted debugging through AI agents like GitHub Copilot, Claude, Codex and similar. The server provides tools for execution control, memory inspection, breakpoints, disassembly, hardware status, rewind and more. STDIO and HTTP transports are supported, with STDIO preferred.
+Gearlynx includes a [Model Context Protocol](https://modelcontextprotocol.io/introduction) (MCP) server that enables AI-assisted debugging through AI agents like Claude Code, Codex and similar. The server provides tools for execution control, memory inspection, breakpoints, disassembly, hardware status, rewind and more. STDIO and HTTP transports are supported, with STDIO preferred.
 
 For complete setup instructions and tool documentation, see [MCP_README.md](MCP_README.md).
 
@@ -222,15 +229,15 @@ make dist
 
 - Ubuntu / Debian / Raspberry Pi (Raspbian):
 
-If you are using Ubuntu 25.04 or later, you can install SDL3 directly. Use the following commands to build:
+If you are using Ubuntu 26.04, you can install SDL3 directly. Use the following commands to build:
 
 ``` shell
-sudo apt install build-essential libsdl3-dev
+sudo apt install build-essential pkg-config libsdl3-dev libgl-dev
 cd platforms/linux
 make
 ```
 
-For older Ubuntu versions (22.04, 24.04), you need to build SDL3 from source first. Use the following commands to build both SDL3 and Gearlynx:
+For Ubuntu 24.04, you need to build SDL3 from source first. Use the following commands to build both SDL3 and Gearlynx:
 
 ``` shell
 sudo apt install build-essential cmake git curl jq pkg-config \

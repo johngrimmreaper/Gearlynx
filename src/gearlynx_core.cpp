@@ -35,6 +35,7 @@
 #include "mikey.h"
 #include "random.h"
 #include "trace_logger.h"
+#include "profiler.h"
 #include "memory_stream.h"
 
 GearlynxCore::GearlynxCore()
@@ -49,6 +50,7 @@ GearlynxCore::GearlynxCore()
     InitPointer(m_mikey);
     InitPointer(m_random);
     InitPointer(m_trace_logger);
+    InitPointer(m_profiler);
     m_paused = true;
     m_total_cycles = 0;
     m_comlynx_sync_callback = NULL;
@@ -69,6 +71,7 @@ GearlynxCore::~GearlynxCore()
     SafeDelete(m_mikey);
     SafeDelete(m_random);
     SafeDelete(m_trace_logger);
+    SafeDelete(m_profiler);
 }
 
 void GearlynxCore::Init(GLYNX_Pixel_Format pixel_format)
@@ -82,7 +85,7 @@ void GearlynxCore::Init(GLYNX_Pixel_Format pixel_format)
     m_m6502 = new M6502(m_bus, m_random);
     m_input = new Input(m_media);
     m_suzy = new Suzy(m_media, m_m6502, m_input, m_bus);
-    m_mikey = new Mikey(m_suzy, m_media, m_m6502, m_bus, m_random);
+    m_mikey = new Mikey(m_suzy, m_input, m_media, m_m6502, m_bus, m_random);
     m_memory = new Memory(m_media, m_input, m_suzy, m_mikey, m_m6502, m_bus, m_random);
     m_audio = new Audio(m_mikey);
 
@@ -102,8 +105,16 @@ void GearlynxCore::Init(GLYNX_Pixel_Format pixel_format)
     m_suzy->SetTraceLogger(m_trace_logger);
     m_mikey->SetTraceLogger(m_trace_logger);
     m_media->SetTraceLogger(m_trace_logger);
+    m_profiler = new Profiler(&m_total_cycles);
+    m_m6502->SetProfiler(m_profiler);
+    m_mikey->SetProfiler(m_profiler);
 #endif
 
+}
+
+void GearlynxCore::SetRandomSeed(u32 seed)
+{
+    m_random->Seed(seed);
 }
 
 template<bool debugger>
@@ -111,6 +122,7 @@ bool GearlynxCore::RunToVBlankTemplate(u8* frame_buffer, s16* sample_buffer,
     int* sample_count, GLYNX_Debug_Run* debug, bool render)
 {
     m_mikey->GetLcdScreen()->SetBuffer(frame_buffer);
+    m_input->BeginFrame();
 #if !defined(GLYNX_DISABLE_DISASSEMBLER)
     m_suzy->BeginSpriteBoundingBoxFrame();
 #endif
@@ -131,32 +143,13 @@ bool GearlynxCore::RunToVBlankTemplate(u8* frame_buffer, s16* sample_buffer,
             debug_enable && debug->brk_trigger_irq);
 
         bool stop = false;
+        bool frame_ready = false;
         u32 failsafe_cycle_count = 0;
 
         do
         {
-            u32 cpu_cycles = m_m6502->RunInstruction();
-            u32 bus_cycles = m_bus->ConsumeCycles();
-            u32 suzy_stolen_cycles = m_bus->ConsumeSuzyStolenCycles();
-            u32 lynx_cycles = cpu_cycles + bus_cycles;
-            u32 suzy_cycles = m_suzy->ApplyBusStall(&lynx_cycles, suzy_stolen_cycles);
-            m_total_cycles += lynx_cycles;
-            SynchronizeComLynx();
-
-            //Debug("-> CPU cycles=%u, Lynx cycles=%u", cpu_cycles, lynx_cycles);
-
-            if (m_m6502->IsHalted())
-            {
-                stop = m_mikey->Clock(lynx_cycles);
-                if (m_m6502->IsHalted())
-                    m_suzy->Clock(suzy_cycles);
-            }
-            else
-            {
-                m_suzy->Clock(suzy_cycles);
-                stop = m_mikey->Clock(lynx_cycles);
-            }
-            m_audio->Clock(lynx_cycles);
+            u32 lynx_cycles;
+            stop = RunCycle(lynx_cycles);
 
 #if !defined(GLYNX_DISABLE_DISASSEMBLER)
             if (stop)
@@ -169,6 +162,9 @@ bool GearlynxCore::RunToVBlankTemplate(u8* frame_buffer, s16* sample_buffer,
                 Debug("Exceeded max cycles in RunToVBlankTemplate");
                 stop = true;
             }
+
+            if (stop)
+                frame_ready = true;
 
             if (debug_enable)
             {
@@ -184,12 +180,15 @@ bool GearlynxCore::RunToVBlankTemplate(u8* frame_buffer, s16* sample_buffer,
         }
         while (!stop);
 
+        if (frame_ready)
+            m_memory->ApplyCheats();
+
 #if !defined(GLYNX_DISABLE_DISASSEMBLER)
         m_suzy->EndSpriteBoundingBoxFrame();
 #endif
         if (render)
             m_mikey->GetLcdScreen()->EndFrame(m_media->GetRotation());
-        m_audio->EndFrame(sample_buffer, sample_count);
+        EndFrame(sample_buffer, sample_count);
 
         return m_m6502->BreakpointHit() || m_m6502->RunToBreakpointHit();
     }
@@ -202,26 +201,8 @@ bool GearlynxCore::RunToVBlankTemplate(u8* frame_buffer, s16* sample_buffer,
 
         do
         {
-            u32 cpu_cycles = m_m6502->RunInstruction();
-            u32 bus_cycles = m_bus->ConsumeCycles();
-            u32 suzy_stolen_cycles = m_bus->ConsumeSuzyStolenCycles();
-            u32 lynx_cycles = cpu_cycles + bus_cycles;
-            u32 suzy_cycles = m_suzy->ApplyBusStall(&lynx_cycles, suzy_stolen_cycles);
-            m_total_cycles += lynx_cycles;
-            SynchronizeComLynx();
-
-            if (m_m6502->IsHalted())
-            {
-                stop = m_mikey->Clock(lynx_cycles);
-                if (m_m6502->IsHalted())
-                    m_suzy->Clock(suzy_cycles);
-            }
-            else
-            {
-                m_suzy->Clock(suzy_cycles);
-                stop = m_mikey->Clock(lynx_cycles);
-            }
-            m_audio->Clock(lynx_cycles);
+            u32 lynx_cycles;
+            stop = RunCycle(lynx_cycles);
 
             failsafe_cycle_count += lynx_cycles;
             if (failsafe_cycle_count > 450000)
@@ -232,12 +213,14 @@ bool GearlynxCore::RunToVBlankTemplate(u8* frame_buffer, s16* sample_buffer,
         }
         while (!stop);
 
+        m_memory->ApplyCheats();
+
 #if !defined(GLYNX_DISABLE_DISASSEMBLER)
         m_suzy->EndSpriteBoundingBoxFrame();
 #endif
         if (render)
             m_mikey->GetLcdScreen()->EndFrame(m_media->GetRotation());
-        m_audio->EndFrame(sample_buffer, sample_count);
+        EndFrame(sample_buffer, sample_count);
 
         return false;
     }
@@ -275,6 +258,12 @@ bool GearlynxCore::RunToVBlank(u8* frame_buffer, s16* sample_buffer,
         return RunToVBlankTemplate<false>(frame_buffer, sample_buffer, sample_count, debug, render);
 }
 
+void GearlynxCore::EndFrame(s16* sample_buffer, int* sample_count)
+{
+    m_audio->EndFrame(sample_buffer, sample_count);
+    m_input->ApplyPendingState();
+}
+
 void GearlynxCore::RenderFrameBuffer(u8* frame_buffer)
 {
     m_mikey->GetLcdScreen()->SetBuffer(frame_buffer);
@@ -283,6 +272,8 @@ void GearlynxCore::RenderFrameBuffer(u8* frame_buffer)
 
 bool GearlynxCore::LoadROM(const char* file_path, bool softpatching)
 {
+    ClearCheats();
+
     if (m_media->LoadFromFile(file_path, softpatching))
     {
         m_memory->ResetDisassemblerRecords();
@@ -295,6 +286,8 @@ bool GearlynxCore::LoadROM(const char* file_path, bool softpatching)
 
 bool GearlynxCore::LoadROMFromBuffer(const u8* buffer, int size, const char* file_path)
 {
+    ClearCheats();
+
     if (m_media->LoadFromBuffer(buffer, size, file_path))
     {
         m_memory->ResetDisassemblerRecords();
@@ -322,7 +315,8 @@ void GearlynxCore::UnloadBios()
 
 bool GearlynxCore::GetRuntimeInfo(GLYNX_Runtime_Info& runtime_info)
 {
-    GLYNX_Rotation rotation = m_media->GetRotation();
+    bool status_screen = !m_media->IsBiosLoaded() || !m_mikey->IsPoweredOn();
+    GLYNX_Rotation rotation = status_screen ? GLYNX_ROTATION_DISABLED : m_media->GetRotation();
 
     if (rotation == GLYNX_ROTATION_LEFT || rotation == GLYNX_ROTATION_RIGHT)
     {
@@ -347,7 +341,175 @@ bool GearlynxCore::GetRuntimeInfo(GLYNX_Runtime_Info& runtime_info)
     else
         runtime_info.frame_time = ((t0_backup + 1.0f) * tick_T0_us * (t2_backup + 1.0f)) / 1000.0f;
 
+    int visible_lines = (int)mikey_state->timers[2].backup - 2;
+    if (status_screen || visible_lines < 1 || visible_lines > GLYNX_SCREEN_HEIGHT)
+        visible_lines = GLYNX_SCREEN_HEIGHT;
+
+    switch (rotation)
+    {
+        case GLYNX_ROTATION_LEFT:
+            runtime_info.rotation = 1;
+            runtime_info.active_region[0] = 0;
+            runtime_info.active_region[1] = 0;
+            runtime_info.active_region[2] = visible_lines;
+            runtime_info.active_region[3] = GLYNX_SCREEN_WIDTH;
+            break;
+        case GLYNX_ROTATION_180:
+            runtime_info.rotation = 2;
+            runtime_info.active_region[0] = 0;
+            runtime_info.active_region[1] = GLYNX_SCREEN_HEIGHT - visible_lines;
+            runtime_info.active_region[2] = GLYNX_SCREEN_WIDTH;
+            runtime_info.active_region[3] = visible_lines;
+            break;
+        case GLYNX_ROTATION_RIGHT:
+            runtime_info.rotation = 3;
+            runtime_info.active_region[0] = GLYNX_SCREEN_HEIGHT - visible_lines;
+            runtime_info.active_region[1] = 0;
+            runtime_info.active_region[2] = visible_lines;
+            runtime_info.active_region[3] = GLYNX_SCREEN_WIDTH;
+            break;
+        default:
+            runtime_info.rotation = 0;
+            runtime_info.active_region[0] = 0;
+            runtime_info.active_region[1] = 0;
+            runtime_info.active_region[2] = GLYNX_SCREEN_WIDTH;
+            runtime_info.active_region[3] = visible_lines;
+            break;
+    }
+
     return m_media->IsReady();
+}
+
+bool GearlynxCore::SetCheat(const char* cheat)
+{
+    if (!m_media->IsReady())
+        return false;
+
+    GLYNX_Cheat cheats[GLYNX_MAX_CHEATS];
+    int count = ParseCheat(cheat, cheats, GLYNX_MAX_CHEATS);
+
+    if ((count <= 0) || !m_memory->CanAddCheats(count))
+        return false;
+
+    for (int i = 0; i < count; i++)
+        m_memory->AddCheat(cheats[i]);
+
+    return true;
+}
+
+void GearlynxCore::ClearCheats()
+{
+    m_memory->ClearCheats();
+}
+
+bool GearlynxCore::IsValidCheat(const char* cheat)
+{
+    GLYNX_Cheat cheats[GLYNX_MAX_CHEATS];
+    return ParseCheat(cheat, cheats, GLYNX_MAX_CHEATS) > 0;
+}
+
+int GearlynxCore::ParseCheat(const char* cheat, GLYNX_Cheat* cheats, int max_cheats)
+{
+    if (!IsValidPointer(cheat))
+        return 0;
+
+    int count = 0;
+    const char* p = cheat;
+
+    while (*p != 0)
+    {
+        while (IsCheatSeparator(*p))
+            p++;
+
+        if (*p == 0)
+            break;
+
+        const char* code = p;
+
+        while ((*p != 0) && !IsCheatSeparator(*p))
+            p++;
+
+        int parsed = ParseCheatCode(code, (int)(p - code), cheats + count, max_cheats - count);
+
+        if (parsed <= 0)
+            return 0;
+
+        count += parsed;
+    }
+
+    return count;
+}
+
+int GearlynxCore::ParseCheatCode(const char* code, int length, GLYNX_Cheat* cheats, int max_cheats)
+{
+    u16 address = 0;
+    u8 compare = 0;
+    bool has_compare = false;
+    int pos = 4;
+
+    if ((length < 6) || !parse_hex_string(code, 4, &address))
+        return 0;
+
+    if (code[pos] == '?')
+    {
+        if ((length < 9) || !parse_hex_string(code + 5, 2, &compare))
+            return 0;
+
+        has_compare = true;
+        pos = 7;
+    }
+
+    if (code[pos] != ':')
+        return 0;
+
+    pos++;
+
+    const char* value_str = code + pos;
+    int digits = length - pos;
+    u16 value = 0;
+
+    if (digits == 3)
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            if ((value_str[i] < '0') || (value_str[i] > '9'))
+                return 0;
+
+            value = (value * 10) + (value_str[i] - '0');
+        }
+
+        if (value > 0xFF)
+            return 0;
+    }
+    else if (((digits < 1) || (digits > 4)) || !parse_hex_string(value_str, digits, &value))
+        return 0;
+
+    if (digits == 4)
+    {
+        if (has_compare || (max_cheats < 2))
+            return 0;
+
+        cheats[0].address = address;
+        cheats[0].compare = -1;
+        cheats[0].value = value & 0xFF;
+        cheats[1].address = (address + 1) & 0xFFFF;
+        cheats[1].compare = -1;
+        cheats[1].value = value >> 8;
+        return 2;
+    }
+
+    if (max_cheats < 1)
+        return 0;
+
+    cheats[0].address = address;
+    cheats[0].compare = has_compare ? compare : -1;
+    cheats[0].value = value & 0xFF;
+    return 1;
+}
+
+bool GearlynxCore::IsCheatSeparator(char c)
+{
+    return (c == '+') || (c == ',') || (c == ';') || (c == ' ') || (c == '\t') || (c == '\r') || (c == '\n');
 }
 
 u64 GearlynxCore::GetTotalCycles()
@@ -358,6 +520,11 @@ u64 GearlynxCore::GetTotalCycles()
 TraceLogger* GearlynxCore::GetTraceLogger()
 {
     return m_trace_logger;
+}
+
+Profiler* GearlynxCore::GetProfiler()
+{
+    return m_profiler;
 }
 
 void GearlynxCore::SetComLynxCallbacks(GLYNX_ComLynx_Publish_Callback publish_callback,
@@ -382,11 +549,6 @@ void GearlynxCore::SetComLynxTurboCallbacks(GLYNX_ComLynx_Turbo_Sample_Callback 
 void GearlynxCore::SetComLynxCableConnected(bool connected)
 {
     m_mikey->SetComLynxCableConnected(connected);
-}
-
-bool GearlynxCore::IsComLynxCableConnected() const
-{
-    return m_mikey->IsComLynxCableConnected();
 }
 
 void GearlynxCore::KeyPressed(GLYNX_Keys key)
@@ -440,12 +602,6 @@ void GearlynxCore::ResetROM(bool preserve_ram)
         stream.seekg(0, stream.beg);
         m_media->LoadRam(stream, size);
     }
-}
-
-void GearlynxCore::ResetSound()
-{
-    bool is_lynx2 = (m_media->GetConsoleType() != GLYNX_CONSOLE_MODEL_I);
-    m_audio->Reset(is_lynx2);
 }
 
 void GearlynxCore::SaveRam()
@@ -607,14 +763,15 @@ bool GearlynxCore::SaveState(const char* path, int index, bool screenshot)
     using namespace std;
 
     string full_path = GetSaveStatePath(path, index);
+    string temp_path = full_path + ".tmp";
     Debug("Saving state to %s...", full_path.c_str());
 
     ofstream stream;
-    open_ofstream_utf8(stream, full_path.c_str(), ios::out | ios::binary);
+    open_ofstream_utf8(stream, temp_path.c_str(), ios::out | ios::binary);
 
     if (!stream.is_open())
     {
-        Error("Failed to open save state file for writing: %s", full_path.c_str());
+        Error("Failed to open save state file for writing: %s", temp_path.c_str());
         return false;
     }
 
@@ -622,14 +779,16 @@ bool GearlynxCore::SaveState(const char* path, int index, bool screenshot)
     if (!SaveState(stream, size, screenshot))
     {
         stream.close();
+        remove_file_utf8(temp_path.c_str());
         Error("Failed to save state to file: %s", full_path.c_str());
         return false;
     }
 
     stream.close();
 
-    if (!stream.good())
+    if (!stream.good() || !rename_file_utf8(temp_path.c_str(), full_path.c_str()))
     {
+        remove_file_utf8(temp_path.c_str());
         Error("Failed to write save state file: %s", full_path.c_str());
         return false;
     }
@@ -710,8 +869,10 @@ bool GearlynxCore::SaveState(std::ostream& stream, size_t& size, bool screenshot
     m_input->SaveState(stream);
     m_media->SaveState(stream);
     m_random->SaveState(stream);
+    m_bus->SaveState(stream);
 
 #if defined(__LIBRETRO__)
+    UNUSED(screenshot);
     GLYNX_SaveState_Header_Libretro header;
     header.magic = GLYNX_SAVESTATE_MAGIC;
     header.version = GLYNX_SAVESTATE_VERSION;
@@ -737,7 +898,9 @@ bool GearlynxCore::SaveState(std::ostream& stream, size_t& size, bool screenshot
     if (screenshot)
     {
         GLYNX_Runtime_Info runtime_info;
-        if (!GetRuntimeInfo(runtime_info))
+        u8* frame_buffer = m_mikey->GetLcdScreen()->GetBuffer();
+
+        if (!IsValidPointer(frame_buffer) || !GetRuntimeInfo(runtime_info))
         {
             header.screenshot_size = 0;
             header.screenshot_width = 0;
@@ -751,8 +914,6 @@ bool GearlynxCore::SaveState(std::ostream& stream, size_t& size, bool screenshot
             int bytes_per_pixel = 2;
             if (m_mikey->GetLcdScreen()->GetPixelFormat() == GLYNX_PIXEL_RGBA8888)
                 bytes_per_pixel = 4;
-
-            u8* frame_buffer = m_mikey->GetLcdScreen()->GetBuffer();
 
             header.screenshot_size = header.screenshot_width * header.screenshot_height * bytes_per_pixel;
             stream.write(reinterpret_cast<const char*>(frame_buffer), header.screenshot_size);
@@ -849,7 +1010,11 @@ bool GearlynxCore::LoadState(std::istream& stream)
 #endif
 
     stream.seekg(0, ios::end);
-    size_t size = static_cast<size_t>(stream.tellg());
+    std::streampos end = stream.tellg();
+    if (!stream.good() || end < (std::streamoff)sizeof(header))
+        return false;
+    size_t size = static_cast<size_t>(end);
+    size_t body_size = size - sizeof(header);
 
     // Try desktop header first (larger, contains all info)
     GLYNX_SaveState_Header desktop_header = {};
@@ -858,8 +1023,12 @@ bool GearlynxCore::LoadState(std::istream& stream)
         stream.seekg(size - sizeof(desktop_header), ios::beg);
         stream.read(reinterpret_cast<char*> (&desktop_header), sizeof(desktop_header));
 
-        if (desktop_header.magic == GLYNX_SAVESTATE_MAGIC)
+        if (stream.good() && desktop_header.magic == GLYNX_SAVESTATE_MAGIC)
         {
+            body_size = size - sizeof(desktop_header);
+            if (desktop_header.screenshot_size > body_size)
+                return false;
+            body_size -= desktop_header.screenshot_size;
             header.magic = desktop_header.magic;
             header.version = desktop_header.version;
 #if !defined(__LIBRETRO__)
@@ -877,6 +1046,9 @@ bool GearlynxCore::LoadState(std::istream& stream)
     }
 
     stream.seekg(0, ios::beg);
+
+    if (!stream.good())
+        return false;
 
     Debug("Load state header magic: 0x%08x", header.magic);
     Debug("Load state header version: %d", header.version);
@@ -921,20 +1093,39 @@ bool GearlynxCore::LoadState(std::istream& stream)
 
     Debug("Unserializing save state...");
 
-    m_m6502->LoadState(stream);
+    m_m6502->LoadState(stream, header.version);
+    if (!stream.good())
+        return false;
     m_memory->LoadState(stream, header.version);
+    if (!stream.good())
+        return false;
     m_mikey->LoadState(stream, header.version);
+    if (!stream.good())
+        return false;
     m_suzy->LoadState(stream, header.version);
+    if (!stream.good())
+        return false;
     m_audio->LoadState(stream, header.version);
+    if (!stream.good())
+        return false;
     m_input->LoadState(stream);
+    if (!stream.good())
+        return false;
     m_media->LoadState(stream, header.version);
+    if (!stream.good())
+        return false;
 
     if (header.version >= 21)
     {
         m_random->LoadState(stream);
     }
 
-    return true;
+    if (header.version >= 27)
+        m_bus->LoadState(stream);
+    else
+        m_bus->Reset();
+
+    return stream.good() && stream.tellg() == (std::streamoff)body_size;
 }
 
 bool GearlynxCore::GetSaveStateHeader(int index, const char* path, GLYNX_SaveState_Header* header)
@@ -1065,6 +1256,10 @@ void GearlynxCore::Reset()
 {
     m_paused = false;
     m_total_cycles = 0;
+
+    if (IsValidPointer(m_profiler))
+        m_profiler->Reset();
+
     m_comlynx_next_sync_cycle = 0;
 
     m_media->Reset();

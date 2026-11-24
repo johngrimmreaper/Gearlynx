@@ -313,14 +313,14 @@ void McpServer::HandleInitialize(const json& request)
             {"name", "gearlynx-mcp-server"},
             {"title", GLYNX_TITLE " MCP Server"},
             {"version", GLYNX_VERSION},
-            {"description", "Debug/control " GLYNX_TITLE " Atari Lynx: execution, breakpoints, IRQ timers, memory, 6502 CPU, Mikey, Suzy, UART, cartridge, EEPROM, LCD, disassembly, symbols, sprites, frame buffers, save states, rewind, input, screenshots."}
+            {"description", "Debug/control " GLYNX_TITLE " Atari Lynx: execution, breakpoints, IRQ timers, memory, 6502 CPU, Mikey, Suzy, UART, cartridge, EEPROM, LCD, disassembly, symbols, sprites, frame buffers, save states, rewind, input, screenshots, video recording."}
         }}
     };
 
     response["result"]["instructions"] =
         "Use this server for Atari Lynx game debugging, reverse engineering, memory inspection, CPU "
         "tracing, breakpoints, Mikey, Suzy, UART, LCD, cartridge, sprites, save states, rewind, input, "
-        "and screenshots.";
+        "screenshots, and video recording.";
 
     if (g_mcp_router_enabled)
     {
@@ -907,6 +907,51 @@ json McpServer::BuildToolList()
         {"annotations", {{"readOnlyHint", true}, {"destructiveHint", false}, {"idempotentHint", true}, {"openWorldHint", false}}},
         {"inputSchema", {
             {"type", "object"},
+            {"additionalProperties", false}
+        }}
+    });
+
+    tools.push_back({
+        {"name", "start_video_recording"},
+        {"title", "Start Video Recording"},
+        {"description", "Start recording emulated video and audio to an AVI file (MJPEG or uncompressed video, PCM audio). The file is written to disk only; its path is returned. Options given here update the recording settings, same as the GUI menu."},
+        {"annotations", {{"readOnlyHint", false}, {"destructiveHint", true}, {"idempotentHint", false}, {"openWorldHint", true}}},
+        {"inputSchema", {
+            {"type", "object"},
+            {"properties", {
+                {"file_path", {
+                    {"type", "string"},
+                    {"description", "Absolute destination .avi file path. If omitted, an automatic name is used in the configured video recordings directory."}
+                }},
+                {"scale", {
+                    {"type", "integer"},
+                    {"description", "Output height multiplier (1-20)."},
+                    {"minimum", 1},
+                    {"maximum", 20}
+                }},
+                {"aspect_ratio", {
+                    {"type", "string"},
+                    {"description", "Output aspect ratio. screen follows the current display settings (square pixels while debugging)."},
+                    {"enum", json::array({"screen", "square", "4:3", "16:9", "16:10"})}
+                }},
+                {"quality", {
+                    {"type", "string"},
+                    {"description", "low and medium halve color resolution; lossless writes uncompressed video with very large files; lossless_compressed stores PNG frames, much smaller but needs an FFmpeg based player."},
+                    {"enum", json::array({"low", "medium", "high", "lossless", "lossless_compressed"})}
+                }}
+            }},
+            {"additionalProperties", false}
+        }}
+    });
+
+    tools.push_back({
+        {"name", "stop_video_recording"},
+        {"title", "Stop Video Recording"},
+        {"description", "Stop the active video recording and finalize the AVI file. Returns the file path and recorded frame count."},
+        {"annotations", {{"readOnlyHint", false}, {"destructiveHint", false}, {"idempotentHint", false}, {"openWorldHint", true}}},
+        {"inputSchema", {
+            {"type", "object"},
+            {"properties", json::object()},
             {"additionalProperties", false}
         }}
     });
@@ -1660,7 +1705,8 @@ json McpServer::BuildToolList()
     tools.push_back({
         {"name", "get_trace_log"},
         {"title", "Get Trace Log"},
-        {"description", "Read trace log entries: CPU instructions and hardware/debug events."},
+        {"description", "Read trace log entries: CPU instructions and hardware/debug events. enabled says whether it records; "
+            "after a reset or media change stopped it, stopped_by says which."},
         {"annotations", {{"readOnlyHint", true}, {"destructiveHint", false}, {"idempotentHint", true}, {"openWorldHint", false}}},
         {"inputSchema", {
             {"type", "object"},
@@ -1683,7 +1729,8 @@ json McpServer::BuildToolList()
     tools.push_back({
         {"name", "set_trace_log"},
         {"title", "Set Trace Logger"},
-        {"description", "Enable/disable trace logging to memory or disk; configure capacity, file limit, output directory, event filters, and debug output."},
+        {"description", "Enable/disable trace logging to memory or disk; configure capacity, file limit, output directory, event filters, and debug output. "
+            "A reset or media change stops it."},
         {"annotations", {{"readOnlyHint", false}, {"destructiveHint", true}, {"idempotentHint", true}, {"openWorldHint", false}}},
         {"inputSchema", {
             {"type", "object"},
@@ -1715,6 +1762,15 @@ json McpServer::BuildToolList()
                     {"type", "string"},
                     {"description", "Directory for the automatically named disk trace file."}
                 }},
+                {"vblank_watch_address", {
+                    {"type", "string"},
+                    {"description", "CPU address hex watched by mikey.display.missed_vblank: '0200', '0x0200', or '$0200'. Omit to keep current."}
+                }},
+                {"vblank_watch_operation", {
+                    {"type", "string"},
+                    {"description", "Access that marks a frame as on time for mikey.display.missed_vblank. Omit to keep current."},
+                    {"enum", json::array({"read", "write", "read_write"})}
+                }},
                 {"filters", {
                     {"type", "array"},
                     {"description", "Unique exact filters; omission selects CPU instructions and IRQs."},
@@ -1731,7 +1787,7 @@ json McpServer::BuildToolList()
                             "suzy.input.reads", "mikey.timers.registers",
                             "mikey.timers.underflows", "mikey.timers.irqs", "mikey.timers.links",
                             "mikey.interrupts", "mikey.display.registers", "mikey.display.palette",
-                            "mikey.display.dma", "mikey.display.timing", "mikey.audio.channels",
+                            "mikey.display.dma", "mikey.display.timing", "mikey.display.missed_vblank", "mikey.audio.channels",
                             "mikey.audio.mixer", "mikey.audio.clocks", "mikey.uart.registers",
                             "mikey.uart.transfers", "mikey.uart.irqs", "mikey.uart.problems",
                             "mikey.uart.breaks", "mikey.uart.comlynx", "redeye.packets",
@@ -1743,6 +1799,53 @@ json McpServer::BuildToolList()
                 }}
             }},
             {"required", json::array({"enabled"})},
+            {"additionalProperties", false}
+        }}
+    });
+
+    tools.push_back({
+        {"name", "set_profiler"},
+        {"title", "Set Profiler"},
+        {"description", "Start (opens the Profiler window), stop (closes it), or reset the function profiler. Collects only while the window is visible."},
+        {"annotations", {{"readOnlyHint", false}, {"destructiveHint", true}, {"idempotentHint", true}, {"openWorldHint", false}}},
+        {"inputSchema", {
+            {"type", "object"},
+            {"properties", {
+                {"action", {
+                    {"type", "string"},
+                    {"description", "start opens the window and resumes collection; stop closes the window; reset clears collected data."},
+                    {"enum", json::array({"start", "stop", "reset"})}
+                }}
+            }},
+            {"required", json::array({"action"})},
+            {"additionalProperties", false}
+        }}
+    });
+
+    tools.push_back({
+        {"name", "get_profiler_data"},
+        {"title", "Get Profiler Data"},
+        {"description", "Read function profiler results: totals plus per-function symbol, address, calls, calls per frame, inclusive/exclusive cycles and percentages, and avg/min/max cycles per call."},
+        {"annotations", {{"readOnlyHint", true}, {"destructiveHint", false}, {"idempotentHint", true}, {"openWorldHint", false}}},
+        {"inputSchema", {
+            {"type", "object"},
+            {"properties", {
+                {"sort", {
+                    {"type", "string"},
+                    {"description", "Sort order, highest first (default inclusive)."},
+                    {"enum", json::array({"inclusive", "exclusive", "calls", "average", "max"})}
+                }},
+                {"count", {
+                    {"type", "integer"},
+                    {"description", "Functions to return (default 50, max 1000)"},
+                    {"minimum", 1},
+                    {"maximum", 1000}
+                }},
+                {"filter", {
+                    {"type", "string"},
+                    {"description", "Case-insensitive substring matched against function name or hex address."}
+                }}
+            }},
             {"additionalProperties", false}
         }}
     });
@@ -1773,6 +1876,56 @@ json McpServer::BuildToolList()
                 }}
             }},
             {"required", json::array({"snapshot"})}
+        }}
+    });
+
+    tools.push_back({
+        {"name", "list_cheats"},
+        {"title", "List Cheats"},
+        {"description", "List cheats: index, code, description, enabled, valid, active."},
+        {"annotations", {{"readOnlyHint", true}, {"destructiveHint", false}, {"idempotentHint", true}, {"openWorldHint", false}}},
+        {"inputSchema", {
+            {"type", "object"},
+            {"properties", json::object()}
+        }}
+    });
+
+    tools.push_back({
+        {"name", "add_cheat"},
+        {"title", "Add Cheat"},
+        {"description", "Add enabled cheat: AAAA:VV or AAAA?CC:VV at 16-bit RAM address; join codes with +."},
+        {"annotations", {{"readOnlyHint", false}, {"destructiveHint", false}, {"idempotentHint", false}, {"openWorldHint", false}}},
+        {"inputSchema", {
+            {"type", "object"},
+            {"properties", {
+                {"code", {
+                    {"type", "string"},
+                    {"description", "Cheat code, e.g. 0050:05 or 004F:99+004D:99."}
+                }},
+                {"description", {
+                    {"type", "string"},
+                    {"description", "Cheat description; optional."}
+                }}
+            }},
+            {"required", json::array({"code"})}
+        }}
+    });
+
+    tools.push_back({
+        {"name", "remove_cheat"},
+        {"title", "Remove Cheat"},
+        {"description", "Remove cheat by index from list_cheats."},
+        {"annotations", {{"readOnlyHint", false}, {"destructiveHint", true}, {"idempotentHint", false}, {"openWorldHint", false}}},
+        {"inputSchema", {
+            {"type", "object"},
+            {"properties", {
+                {"index", {
+                    {"type", "integer"},
+                    {"description", "0-based cheat index from list_cheats."},
+                    {"minimum", 0}
+                }}
+            }},
+            {"required", json::array({"index"})}
         }}
     });
 
@@ -2549,6 +2702,18 @@ json McpServer::ExecuteCommand(const std::string& toolName, const json& argument
     {
         return m_debugAdapter.GetScreenshot();
     }
+    else if (normalizedTool == "start_video_recording")
+    {
+        std::string file_path = arguments.value("file_path", "");
+        int scale = arguments.value("scale", 0);
+        std::string aspect_ratio = arguments.value("aspect_ratio", "");
+        std::string quality = arguments.value("quality", "");
+        return m_debugAdapter.StartVideoRecording(file_path, scale, aspect_ratio, quality);
+    }
+    else if (normalizedTool == "stop_video_recording")
+    {
+        return m_debugAdapter.StopVideoRecording();
+    }
     else if (normalizedTool == "get_frame_buffer")
     {
         std::string buffer = arguments["buffer"];
@@ -2831,6 +2996,33 @@ json McpServer::ExecuteCommand(const std::string& toolName, const json& argument
         int snapshot = arguments["snapshot"];
         return m_debugAdapter.RewindSeek(snapshot);
     }
+    else if (normalizedTool == "set_profiler")
+    {
+        std::string action = arguments["action"];
+        return m_debugAdapter.SetProfiler(action);
+    }
+    else if (normalizedTool == "get_profiler_data")
+    {
+        std::string sort = arguments.value("sort", "inclusive");
+        int count = arguments.value("count", 50);
+        std::string filter = arguments.value("filter", "");
+        return m_debugAdapter.GetProfilerData(sort, count, filter);
+    }
+    else if (normalizedTool == "list_cheats")
+    {
+        return m_debugAdapter.ListCheats();
+    }
+    else if (normalizedTool == "add_cheat")
+    {
+        std::string code = arguments["code"];
+        std::string description = arguments.value("description", "");
+        return m_debugAdapter.AddCheat(code, description);
+    }
+    else if (normalizedTool == "remove_cheat")
+    {
+        int index = arguments["index"];
+        return m_debugAdapter.RemoveCheat(index);
+    }
     else
     {
         return {{"error", "Unknown tool: " + toolName}};
@@ -2894,7 +3086,8 @@ static bool IsValidResourceName(const std::string& name)
 
 void McpServer::LoadResourcesFromCategory(const std::string& category, const std::string& tocPath)
 {
-    std::ifstream file(tocPath);
+    std::ifstream file;
+    open_ifstream_utf8(file, tocPath.c_str(), std::ios::in);
     if (!file.is_open())
     {
         Log("[MCP] Warning: Resources TOC file not found: %s", tocPath.c_str());
@@ -2970,7 +3163,8 @@ void McpServer::LoadResourcesFromCategory(const std::string& category, const std
 bool McpServer::ReadFileContents(const std::string& filePath, std::string& content)
 {
     content.clear();
-    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+    std::ifstream file;
+    open_ifstream_utf8(file, filePath.c_str(), std::ios::in | std::ios::binary | std::ios::ate);
     if (!file.is_open())
     {
         Log("[MCP] Warning: Failed to open resource file: %s", filePath.c_str());

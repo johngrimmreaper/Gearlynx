@@ -43,9 +43,10 @@ public:
 
     void LoadState(std::istream& stream)
     {
-        u32 state;
+        u32 state = 0;
         stream.read(reinterpret_cast<char*>(&state), sizeof(state));
-        SetState(state);
+        if (stream.good())
+            SetState(state);
     }
 
     INLINE u32 Next()
@@ -68,16 +69,6 @@ public:
     INLINE u8 Next8Bit()
     {
         return (u8)(Next() >> 24);
-    }
-
-    INLINE u16 Next16Bit()
-    {
-        return (u16)(Next() >> 16);
-    }
-
-    INLINE u32 NextMask(u32 mask)
-    {
-        return Next() & mask;
     }
 
 private:

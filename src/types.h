@@ -52,6 +52,8 @@ struct GLYNX_Runtime_Info
     int screen_width;
     int screen_height;
     float frame_time;
+    int rotation;
+    int active_region[4];
 };
 
 enum GLYNX_Console_Type
@@ -67,13 +69,6 @@ enum GLYNX_Bios_State
     BIOS_LOAD_FILE_ERROR,
     BIOS_LOAD_INVALID_SIZE,
     BIOS_LOAD_INVALID_CRC
-};
-
-struct GLYNX_Color
-{
-    u8 red;
-    u8 green;
-    u8 blue;
 };
 
 enum GLYNX_Pixel_Format
@@ -231,7 +226,6 @@ struct GLYNX_Disassembler_Record
     int size;
     bool jump;
     u16 jump_address;
-    u8 jump_bank;
     bool subroutine;
     int irq;
     bool has_operand_address;
@@ -328,6 +322,13 @@ struct GLYNX_Uart
 
     // Cycles since the last frame was latched, saturating
     u32 rx_age_cycles;
+};
+
+struct GLYNX_Cheat
+{
+    u16 address;
+    s16 compare;
+    u8 value;
 };
 
 #endif /* TYPES_H */

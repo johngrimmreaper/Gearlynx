@@ -35,6 +35,7 @@ class Suzy;
 class Mikey;
 class Random;
 class TraceLogger;
+class Profiler;
 
 class GearlynxCore
 {
@@ -56,7 +57,10 @@ public:
     GearlynxCore();
     ~GearlynxCore();
     void Init(GLYNX_Pixel_Format pixel_format = GLYNX_PIXEL_RGBA8888);
+    void SetRandomSeed(u32 seed);
     bool RunToVBlank(u8* frame_buffer, s16* sample_buffer, int* sample_count, GLYNX_Debug_Run* debug = NULL, bool render = true);
+    INLINE bool RunCycle(u32& clock_cycles);
+    void EndFrame(s16* sample_buffer, int* sample_count);
     bool LoadROM(const char* file_path, bool softpatching = false);
     bool LoadROMFromBuffer(const u8* buffer, int size, const char* file_path = NULL);
     GLYNX_Bios_State LoadBios(const char* file_path);
@@ -78,8 +82,10 @@ public:
     bool LoadState(const u8* buffer, size_t size);
     bool GetSaveStateHeader(int index, const char* path, GLYNX_SaveState_Header* header);
     bool GetSaveStateScreenshot(int index, const char* path, GLYNX_SaveState_Screenshot* screenshot);
-    void ResetSound();
     bool GetRuntimeInfo(GLYNX_Runtime_Info& runtime_info);
+    bool SetCheat(const char* cheat);
+    void ClearCheats();
+    static bool IsValidCheat(const char* cheat);
     Memory* GetMemory();
     Media* GetMedia();
     Audio* GetAudio();
@@ -87,9 +93,9 @@ public:
     M6502* GetM6502();
     Suzy* GetSuzy();
     Mikey* GetMikey();
-    Bus* GetBus();
     u64 GetTotalCycles();
     TraceLogger* GetTraceLogger();
+    Profiler* GetProfiler();
     void SetComLynxCallbacks(GLYNX_ComLynx_Publish_Callback publish_callback,
         GLYNX_ComLynx_Sample_Callback sample_callback,
         GLYNX_ComLynx_Break_Callback break_callback,
@@ -97,7 +103,6 @@ public:
     void SetComLynxTurboCallbacks(GLYNX_ComLynx_Turbo_Sample_Callback sample_callback,
         GLYNX_ComLynx_Turbo_Sync_Callback sync_callback, void* user_data);
     void SetComLynxCableConnected(bool connected);
-    bool IsComLynxCableConnected() const;
     u64 GetComLynxCycle() const;
     void RenderFrameBuffer(u8* frame_buffer);
 
@@ -110,6 +115,9 @@ private:
     bool LoadState(std::istream& stream);
     std::string GetSaveStatePath(const char* path, int index);
     void SynchronizeComLynx();
+    static int ParseCheat(const char* cheat, GLYNX_Cheat* cheats, int max_cheats);
+    static int ParseCheatCode(const char* code, int length, GLYNX_Cheat* cheats, int max_cheats);
+    static bool IsCheatSeparator(char c);
 
 private:
     Memory* m_memory;
@@ -122,6 +130,7 @@ private:
     Mikey* m_mikey;
     Random* m_random;
     TraceLogger* m_trace_logger;
+    Profiler* m_profiler;
     bool m_paused;
     u64 m_total_cycles;
     GLYNX_ComLynx_Sync_Callback m_comlynx_sync_callback;

@@ -22,6 +22,7 @@
 #include <thread>
 #include <atomic>
 #include <string.h>
+#include <math.h>
 #include "gearlynx.h"
 #include "mikey.h"
 #include "lcd_screen.h"
@@ -29,6 +30,8 @@
 #include "config.h"
 #include "rewind.h"
 #include "runahead.h"
+#include "video_recorder.h"
+#include "ogl_renderer.h"
 #include "events.h"
 #include "gui_debug_trace_logger.h"
 #include "mcp/mcp_manager.h"
@@ -44,7 +47,6 @@
 
 static GearlynxCore* core;
 static s16* audio_buffer;
-static bool audio_enabled;
 static McpManager* mcp_manager;
 static ComLynxManager* comlynx_manager;
 static bool comlynx_cable_applied;
@@ -53,6 +55,7 @@ static u16 input_active_directions = 0;
 static const int k_frame_buffer_size = 256 * 256 * 4;
 static Uint64 rewind_last_counter = 0;
 static double rewind_pop_accumulator = 0.0;
+static bool video_recording_output = false;
 static DebugMonitorServer* debug_monitor;
 static FramebufferServer* fb_server;
 
@@ -82,6 +85,7 @@ static void update_debug_framebuffers(void);
 static void update_debug_sprites(void);
 static void update_debug_sprites_accumulated(void);
 static void render_debug_sprites(int count);
+static void get_video_recording_size(const GLYNX_Runtime_Info& runtime, int* width, int* height);
 static void reset_rewind_timing(void);
 static int get_rewind_pop_budget(void);
 static bool is_direction_key(GLYNX_Keys key);
@@ -135,13 +139,15 @@ bool emu_init(void)
     for (int i = 0; i < 5; i++)
         InitPointer(emu_savestates_screenshots[i].data);
 
-    audio_enabled = true;
     emu_audio_sync = true;
+    emu_audio_rate_control = false;
+    emu_audio_ratio = 1.0f;
     emu_debug_disable_breakpoints = false;
     emu_debug_command = Debug_Command_None;
     emu_debug_pc_changed = false;
     emu_debug_step_frames_pending = 0;
     emu_frame_counter = 0;
+    emu_video_frame_counter = 0;
     for (int i = 0; i < 8; i++)
         emu_debug_irq_breakpoints[i] = false;
 
@@ -166,6 +172,7 @@ void emu_destroy(void)
     }
     loading_state.store(Loading_State_None);
 
+    emu_stop_video_recording();
     save_ram();
     rewind_destroy();
     runahead_destroy();
@@ -185,7 +192,7 @@ void emu_destroy(void)
 
 bool emu_load_rom(const char* file_path)
 {
-    gui_debug_trace_logger_reset();
+    gui_debug_trace_logger_reset("media_change");
     emu_debug_command = Debug_Command_None;
     reset_buffers();
     reset_debug();
@@ -219,7 +226,7 @@ void emu_load_rom_async(const char* file_path)
     if (loading_state.load() != Loading_State_None)
         return;
 
-    gui_debug_trace_logger_reset();
+    gui_debug_trace_logger_reset("media_change");
 
     emu_debug_command = Debug_Command_None;
     reset_buffers();
@@ -299,6 +306,7 @@ void emu_update(void)
             if (!rewind_pop())
                 break;
 
+            emu_video_frame_counter++;
             rewound = true;
         }
 
@@ -399,15 +407,33 @@ void emu_update(void)
     if (frame_executed)
     {
         if (frame_completed)
+        {
             emu_frame_counter++;
+            emu_video_frame_counter++;
+        }
         rewind_push();
+        if (video_recorder_is_recording())
+        {
+            video_recorder_add_audio(audio_buffer, sampleCount);
+            if (frame_completed)
+            {
+                if (video_recording_output)
+                    emu_video_recording_frame_pending = true;
+                else
+                {
+                    GLYNX_Runtime_Info runtime;
+                    emu_get_runtime(runtime);
+                    video_recorder_add_video(emu_frame_buffer, runtime.screen_width, runtime.screen_height, 4);
+                }
+            }
+        }
     }
 
     if ((sampleCount > 0) && !core->IsPaused())
     {
         bool sync_audio = emu_audio_sync &&
             (!emu_comlynx_is_active() || comlynx_manager->IsPacingPeer());
-        sound_queue_write(audio_buffer, sampleCount, sync_audio);
+        sound_queue_write(audio_buffer, sampleCount, sync_audio, emu_audio_rate_control, emu_audio_ratio, !emu_audio_sync);
     }
     else if (core->IsPaused())
     {
@@ -570,9 +596,14 @@ GLYNX_Bios_State emu_load_bios(const char* file_path)
     return core->LoadBios(file_path);
 }
 
-void emu_reset(void)
+void emu_save_persistent_data(void)
 {
-    gui_debug_trace_logger_reset();
+    save_ram();
+}
+
+void emu_reset(bool save_persistent_data)
+{
+    gui_debug_trace_logger_reset("reset");
     emu_debug_command = Debug_Command_None;
     emu_debug_step_frames_pending = 0;
     emu_debug_pc_changed = true;
@@ -582,7 +613,8 @@ void emu_reset(void)
     reset_rewind_timing();
     emu_audio_reset();
 
-    save_ram();
+    if (save_persistent_data)
+        emu_save_persistent_data();
     core->ResetROM(false);
     load_ram();
 
@@ -592,6 +624,9 @@ void emu_reset(void)
 void emu_force_rotation(int rotation)
 {
     core->GetMedia()->ForceRotation((GLYNX_Rotation)rotation);
+    core->GetInput()->Reset();
+    input_raw_directions = 0;
+    input_active_directions = 0;
 }
 
 void emu_force_console_type(int console_type)
@@ -694,7 +729,6 @@ void emu_set_debug_output(bool enabled)
 
 void emu_audio_mute(bool mute)
 {
-    audio_enabled = !mute;
     core->GetAudio()->Mute(mute);
 }
 
@@ -715,13 +749,16 @@ void emu_audio_set_lowpass_cutoff(float fc)
 
 void emu_audio_reset(void)
 {
-    sound_queue_stop();
-    sound_queue_start(GLYNX_AUDIO_SAMPLE_RATE, 2, GLYNX_AUDIO_QUEUE_SIZE, config_audio.buffer_count);
+    if (sound_queue_is_open())
+        sound_queue_flush();
+    else
+        emu_audio_restart();
 }
 
-bool emu_is_audio_enabled(void)
+void emu_audio_restart(void)
 {
-    return audio_enabled;
+    sound_queue_stop();
+    sound_queue_start(GLYNX_AUDIO_SAMPLE_RATE, 2, GLYNX_AUDIO_QUEUE_SIZE, config_audio.buffer_count);
 }
 
 bool emu_is_audio_open(void)
@@ -739,7 +776,7 @@ void emu_load_ram(const char* file_path)
 {
     if (!emu_is_empty())
     {
-        gui_debug_trace_logger_reset();
+        gui_debug_trace_logger_reset("media_change");
         emu_comlynx_stop();
         save_ram();
         core->ResetROM(false);
@@ -748,61 +785,76 @@ void emu_load_ram(const char* file_path)
     }
 }
 
-void emu_save_state_slot(int index)
+bool emu_save_state_slot(int index)
 {
-    if (!emu_is_empty())
-    {
-        const char* dir = get_configurated_dir(config_emulator.savestates_dir_option, config_emulator.savestates_path.c_str());
-        core->SaveState(dir, index, true);
-        update_savestates_data();
-    }
+    if (emu_is_empty())
+        return false;
+
+    const char* dir = get_configurated_dir(config_emulator.savestates_dir_option, config_emulator.savestates_path.c_str());
+    bool saved = core->SaveState(dir, index, true);
+    update_savestates_data();
+    return saved;
 }
 
-void emu_load_state_slot(int index)
+bool emu_load_state_slot(int index)
 {
-    if (!emu_is_empty())
-    {
-        emu_comlynx_stop();
-        const char* dir = get_configurated_dir(config_emulator.savestates_dir_option, config_emulator.savestates_path.c_str());
-        if (core->LoadState(dir, index))
-        {
-            events_sync_input();
-            rewind_reset();
-        }
-    }
+    if (emu_is_empty())
+        return false;
+
+    emu_comlynx_stop();
+    const char* dir = get_configurated_dir(config_emulator.savestates_dir_option, config_emulator.savestates_path.c_str());
+
+    if (!core->LoadState(dir, index))
+        return false;
+
+    emu_debug_state_restored();
+    events_sync_input();
+    rewind_reset();
+    return true;
 }
 
-void emu_save_state_file(const char* file_path)
+bool emu_save_state_file(const char* file_path)
 {
-    if (!emu_is_empty())
-        core->SaveState(file_path, -1, true);
+    if (emu_is_empty())
+        return false;
+
+    return core->SaveState(file_path, -1, true);
 }
 
-void emu_load_state_file(const char* file_path)
+bool emu_load_state_file(const char* file_path)
 {
-    if (!emu_is_empty())
-    {
-        emu_comlynx_stop();
-        if (core->LoadState(file_path))
-        {
-            events_sync_input();
-            rewind_reset();
-        }
-    }
+    if (emu_is_empty())
+        return false;
+
+    emu_comlynx_stop();
+
+    if (!core->LoadState(file_path))
+        return false;
+
+    emu_debug_state_restored();
+    events_sync_input();
+    rewind_reset();
+    return true;
 }
 
 void update_savestates_data(void)
 {
     emu_savestates_generation++;
 
+    for (int i = 0; i < 5; i++)
+    {
+        emu_savestates[i].rom_name[0] = 0;
+        SafeDeleteArray(emu_savestates_screenshots[i].data);
+        emu_savestates_screenshots[i].width = 0;
+        emu_savestates_screenshots[i].height = 0;
+        emu_savestates_screenshots[i].size = 0;
+    }
+
     if (emu_is_empty())
         return;
 
     for (int i = 0; i < 5; i++)
     {
-        emu_savestates[i].rom_name[0] = 0;
-        SafeDeleteArray(emu_savestates_screenshots[i].data);
-
         const char* dir = get_configurated_dir(config_emulator.savestates_dir_option, config_emulator.savestates_path.c_str());
 
         if (!core->GetSaveStateHeader(i + 1, dir, &emu_savestates[i]))
@@ -812,11 +864,31 @@ void update_savestates_data(void)
         {
             emu_savestates_screenshots[i].data = new u8[emu_savestates[i].screenshot_size];
             emu_savestates_screenshots[i].size = emu_savestates[i].screenshot_size;
-            core->GetSaveStateScreenshot(i + 1, dir, &emu_savestates_screenshots[i]);
+            bool loaded = core->GetSaveStateScreenshot(i + 1, dir, &emu_savestates_screenshots[i]);
+            size_t expected_size = (size_t)emu_savestates_screenshots[i].width * emu_savestates_screenshots[i].height * 4;
+
+            if (!loaded || (emu_savestates_screenshots[i].size != expected_size))
+                SafeDeleteArray(emu_savestates_screenshots[i].data);
         }
     }
 }
 
+
+bool emu_add_cheat(const char* cheat)
+{
+    if (emu_is_rom_loading())
+        return false;
+
+    return core->SetCheat(cheat);
+}
+
+void emu_clear_cheats(void)
+{
+    if (emu_is_rom_loading())
+        return;
+
+    core->ClearCheats();
+}
 
 void emu_get_runtime(GLYNX_Runtime_Info& runtime)
 {
@@ -931,6 +1003,14 @@ GearlynxCore* emu_get_core(void)
     return core;
 }
 
+void emu_debug_state_restored(void)
+{
+    emu_get_core()->GetM6502()->ResetDebuggerExecutionState();
+    emu_debug_command = Debug_Command_None;
+    emu_debug_step_frames_pending = 0;
+    emu_debug_pc_changed = true;
+}
+
 void emu_debug_step_over(void)
 {
     M6502* processor = emu_get_core()->GetM6502();
@@ -1016,34 +1096,39 @@ void emu_set_disassembler_syntax(int syntax)
 #endif
 }
 
-void emu_save_screenshot(const char* file_path)
+bool emu_save_screenshot(const char* file_path)
 {
     if (!core->GetMedia()->IsReady())
-        return;
+        return false;
 
     GLYNX_Runtime_Info runtime;
     emu_get_runtime(runtime);
 
-    stbi_write_png(file_path, runtime.screen_width, runtime.screen_height, 4, emu_frame_buffer, runtime.screen_width * 4);
+    if (!stbi_write_png(file_path, runtime.screen_width, runtime.screen_height, 4, emu_frame_buffer,
+        runtime.screen_width * 4))
+        return false;
 
     Log("Screenshot saved to %s", file_path);
+    return true;
 }
 
-void emu_save_sprite(const char* file_path, int index)
+bool emu_save_sprite(const char* file_path, int index)
 {
     if (index < 0 || index >= DEBUG_MAX_SPRITES)
-        return;
+        return false;
 
     int width = emu_debug_sprite_widths[index];
     int height = emu_debug_sprite_heights[index];
     u8* buffer = emu_debug_sprite_buffers[index];
 
     if (!buffer || width <= 0 || height <= 0)
-        return;
+        return false;
 
-    stbi_write_png(file_path, width, height, 4, buffer, 512 * 4);
+    if (!stbi_write_png(file_path, width, height, 4, buffer, 512 * 4))
+        return false;
 
     Log("Sprite saved to %s", file_path);
+    return true;
 }
 
 int emu_get_screenshot_png(unsigned char** out_buffer)
@@ -1210,7 +1295,10 @@ static void update_debug(void)
 static void update_debug_framebuffers(void)
 {
     u16 vidbas = core->GetSuzy()->GetState()->VIDBAS.value;
-    u16 dispadr = core->GetMikey()->GetState()->DISPADR.value;
+    u16 dispadr = core->GetMikey()->GetState()->DISPADR.value & 0xFFFC;
+    bool dispadr_flip = IS_SET_BIT(core->GetMikey()->GetState()->DISPCTL, 1);
+    if (dispadr_flip)
+        dispadr |= 0x0003;
     u16 collbas = core->GetSuzy()->GetState()->COLLBAS.value;
     u16 custom_addr = (u16)config_debug.frame_buffer_custom_address;
     u8* ram = core->GetMemory()->GetRAM();
@@ -1229,12 +1317,13 @@ static void update_debug_framebuffers(void)
     for (int i = 0; i < count; i++)
     {
         u16 src_vidbas = (u16)(vidbas + (i >> 1));
-        u16 src_dispadr = (u16)(dispadr + (i >> 1));
+        u16 src_dispadr = dispadr_flip ? (u16)(dispadr - (i >> 1)) : (u16)(dispadr + (i >> 1));
         u16 src_collbas = (u16)(collbas + (i >> 1));
         u16 src_custom = (u16)(custom_addr + (i >> 1));
 
         int color_idx_vidbas = i & 1 ? (ram[src_vidbas] & 0x0F) : (ram[src_vidbas] >> 4);
-        int color_idx_dispadr = i & 1 ? (ram[src_dispadr] & 0x0F) : (ram[src_dispadr] >> 4);
+        int nibble_dispadr = (i & 1) ^ (dispadr_flip ? 1 : 0);
+        int color_idx_dispadr = nibble_dispadr ? (ram[src_dispadr] & 0x0F) : (ram[src_dispadr] >> 4);
         int color_idx_collbas = i & 1 ? (ram[src_collbas] & 0x0F) : (ram[src_collbas] >> 4);
         int color_idx_custom = i & 1 ? (ram[src_custom] & 0x0F) : (ram[src_custom] >> 4);
 
@@ -1484,7 +1573,6 @@ static const int k_sprite_buf_h = 512;
 static const u32 k_sprite_sreg_eof = 0xFFFFFFFFu;
 static const u8 k_sprite_max_line_size = 200;
 static const int k_sprite_max_lines = 512;
-static const s16 k_sprite_max_pos = 1024;
 
 static const int k_sprite_quad_seq[4][4] = {
     { 0, 2, 3, 1 },
@@ -1564,7 +1652,12 @@ static void render_debug_sprites(int count)
         emu_debug_sprite_heights[s] = 0;
 
         if (info.skipped)
+        {
+            info.status = Debug_SCB_Status_Skipped;
             continue;
+        }
+
+        info.status = Debug_SCB_Status_NoPixels;
 
         int bpp = info.bpp;
         bool literal_only = info.literal_only;
@@ -1579,10 +1672,10 @@ static void render_debug_sprites(int count)
         int start_quad = (start_left ? 1 : 0) | (start_up ? 2 : 0);
 
         if (ram[sprdline] > k_sprite_max_line_size)
+        {
+            info.status = Debug_SCB_Status_Invalid;
             continue;
-        if (info.hpos > k_sprite_max_pos || info.hpos < -k_sprite_max_pos ||
-            info.vpos > k_sprite_max_pos || info.vpos < -k_sprite_max_pos)
-            continue;
+        }
 
         // First pass: compute bounding box
         s32 min_x = 0x7FFF, max_x = -0x7FFF;
@@ -1778,6 +1871,13 @@ static void render_debug_sprites(int count)
         info.bbox_y = min_y;
         info.bbox_w = (int)(max_x - min_x + 1);
         info.bbox_h = (int)(max_y - min_y + 1);
+
+        s32 screen_x = (s16)(u16)(info.hpos - info.hoff);
+        s32 screen_y = (s16)(u16)(info.vpos - info.voff);
+        bool on_screen = (screen_x + max_x >= 0) && (screen_x + min_x < GLYNX_SCREEN_WIDTH) &&
+                         (screen_y + max_y >= 0) && (screen_y + min_y < GLYNX_SCREEN_HEIGHT);
+
+        info.status = on_screen ? Debug_SCB_Status_Drawn : Debug_SCB_Status_Offscreen;
 
         s32 ox = -min_x;
         s32 oy = -min_y;
@@ -1993,10 +2093,10 @@ static void render_debug_sprites(int count)
     }
 }
 
-void emu_start_vgm_recording(const char* file_path)
+bool emu_start_vgm_recording(const char* file_path)
 {
     if (!core->GetMedia()->IsReady())
-        return;
+        return false;
 
     if (core->GetAudio()->IsVgmRecording())
     {
@@ -2011,10 +2111,11 @@ void emu_start_vgm_recording(const char* file_path)
     metadata.system_name = "Atari Lynx";
     metadata.comment = "Created with " GLYNX_TITLE " " GLYNX_VERSION;
 
-    if (core->GetAudio()->StartVgmRecording(file_path, clock_rate, metadata))
-    {
-        Log("VGM recording started: %s", file_path);
-    }
+    if (!core->GetAudio()->StartVgmRecording(file_path, clock_rate, metadata))
+        return false;
+
+    Log("VGM recording started: %s", file_path);
+    return true;
 }
 
 void emu_stop_vgm_recording(void)
@@ -2029,6 +2130,80 @@ void emu_stop_vgm_recording(void)
 bool emu_is_vgm_recording(void)
 {
     return core->GetAudio()->IsVgmRecording();
+}
+
+bool emu_start_video_recording(const char* file_path)
+{
+    if (!core->GetMedia()->IsReady())
+        return false;
+
+    if (video_recorder_is_recording())
+        emu_stop_video_recording();
+
+    GLYNX_Runtime_Info runtime;
+    emu_get_runtime(runtime);
+
+    int width = 0;
+    int height = 0;
+    video_recording_output = ogl_renderer_get_output_size(&width, &height) && (width > 1) && (height > 1);
+    emu_video_recording_frame_pending = false;
+
+    if (video_recording_output)
+    {
+        width &= ~1;
+        height &= ~1;
+    }
+    else
+        get_video_recording_size(runtime, &width, &height);
+
+    if (!video_recorder_start(file_path, width, height, emu_get_frame_rate(), GLYNX_AUDIO_SAMPLE_RATE, (Video_Recorder_Quality)config_video.recording_quality))
+        return false;
+
+    Log("Video recording started: %s (%dx%d%s)", file_path, width, height, video_recording_output ? ", shader output" : "");
+    return true;
+}
+
+void emu_stop_video_recording(void)
+{
+    if (video_recorder_is_recording())
+    {
+        video_recorder_stop();
+        Log("Video recording stopped");
+    }
+}
+
+bool emu_is_video_recording(void)
+{
+    return video_recorder_is_recording();
+}
+
+static void get_video_recording_size(const GLYNX_Runtime_Info& runtime, int* width, int* height)
+{
+    int selected_ratio = config_debug.debug ? 0 : config_video.ratio;
+    float ratio = 0.0f;
+
+    if (config_video.recording_ratio > 0)
+        selected_ratio = config_video.recording_ratio - 1;
+
+    switch (selected_ratio)
+    {
+        case 1:
+            ratio = 4.0f / 3.0f;
+            break;
+        case 2:
+            ratio = 16.0f / 9.0f;
+            break;
+        case 3:
+            ratio = 16.0f / 10.0f;
+            break;
+        default:
+            ratio = (float)runtime.screen_width / (float)runtime.screen_height;
+    }
+
+    *height = runtime.screen_height * config_video.recording_scale;
+    *width = (int)roundf((float)*height * ratio);
+    *width += *width & 1;
+    *height += *height & 1;
 }
 
 void emu_mcp_set_transport(int mode, int tcp_port, const char* tcp_address)
@@ -2222,14 +2397,6 @@ void emu_debug_monitor_start(int port)
     }
 }
 
-void emu_debug_monitor_stop(void)
-{
-    if (fb_server)
-        fb_server->Stop();
-    if (debug_monitor)
-        debug_monitor->Stop();
-}
-
 bool emu_debug_monitor_is_running(void)
 {
     return debug_monitor && debug_monitor->IsRunning();
@@ -2280,6 +2447,12 @@ void emu_render_current_frame(void)
     if (!core->GetMedia()->IsBiosLoaded())
     {
         lcd_screen->RenderNoBiosScreen(emu_frame_buffer);
+        return;
+    }
+
+    if (!core->GetMikey()->IsPoweredOn())
+    {
+        lcd_screen->RenderNoPowerScreen(emu_frame_buffer);
         return;
     }
 

@@ -24,7 +24,15 @@
 #include <string>
 #include "gearlynx.h"
 
-static const int config_version = 6;
+#if defined(__APPLE__)
+#define CONFIG_PRIMARY_KMOD SDL_KMOD_GUI
+#define CONFIG_PRIMARY_LABEL "Cmd+"
+#else
+#define CONFIG_PRIMARY_KMOD SDL_KMOD_CTRL
+#define CONFIG_PRIMARY_LABEL "Ctrl+"
+#endif
+
+static const int config_version = 8;
 static const int config_minimum_version = 2;
 static const int config_max_recent_roms = 15;
 static const int config_memory_editor_count = 9;
@@ -99,11 +107,13 @@ struct config_Emulator
     int savestates_dir_option;
     std::string savestates_path;
     int screenshots_dir_option;
+    int video_recordings_dir_option;
     std::string screenshots_path;
-    std::string last_open_path;
+    std::string video_recordings_path;
     int window_width;
     int window_height;
-    bool status_messages;
+    bool show_notifications;
+    int notification_duration;
     bool allow_screensaver;
     int mcp_tcp_port;
     std::string mcp_http_address;
@@ -112,6 +122,18 @@ struct config_Emulator
     int console_type;
     int eeprom;
     int cartridge_hardware;
+};
+
+struct config_FileDialogs
+{
+    std::string rom;
+    std::string ram;
+    std::string states;
+    std::string screenshots;
+    std::string recordings;
+    std::string debug;
+    std::string bios;
+    std::string cheats;
 };
 
 struct config_Video
@@ -126,6 +148,9 @@ struct config_Video
     float background_color_debugger[config_Theme_Count][3];
     int shader_mode;
     std::string shader_preset_path;
+    int recording_scale;
+    int recording_ratio;
+    int recording_quality;
 };
 
 struct config_Audio
@@ -200,6 +225,7 @@ enum config_HotkeyIndex
     config_HotkeyIndex_SelectSlot4,
     config_HotkeyIndex_SelectSlot5,
     config_HotkeyIndex_Mute,
+    config_HotkeyIndex_VideoRecording,
     config_HotkeyIndex_COUNT
 };
 
@@ -224,6 +250,7 @@ struct config_Debug
     bool show_call_stack;
     bool show_breakpoints;
     bool show_symbols;
+    bool show_profiler;
     bool show_memory;
     bool show_psg;
     bool show_trace_logger;
@@ -277,6 +304,8 @@ struct config_Debug
     int trace_mikey_audio_events;
     int trace_cartridge_events;
     int trace_debug_events;
+    int trace_vblank_watch_address;
+    int trace_vblank_watch_operation;
     bool debug_output_enabled;
     int trace_output;
     int trace_capacity;
@@ -296,6 +325,7 @@ struct config_Debug
     bool pause_on_brk;
     int pause_on_brk_value;
     bool pause_on_brk_trigger_irq;
+    int font_type;
     int font_size;
     int scale;
     bool multi_viewport;
@@ -309,6 +339,7 @@ struct config_Debug
 };
 
 EXTERN config_Emulator config_emulator;
+EXTERN config_FileDialogs config_file_dialogs;
 EXTERN config_Video config_video;
 EXTERN config_Audio config_audio;
 EXTERN config_Rewind config_rewind;
